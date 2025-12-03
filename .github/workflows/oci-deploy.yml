@@ -57,11 +57,9 @@ jobs:
         with:
           python-version: '3.11'
         if: steps.check_oci.outputs.has_oci == 'true'
-        if: steps.check_oci.outputs.has_oci == 'true'
 
       - name: Install OCI CLI
         run: pip install oci-cli
-        if: steps.check_oci.outputs.has_oci == 'true'
         if: steps.check_oci.outputs.has_oci == 'true'
 
       - name: Configure OCI
