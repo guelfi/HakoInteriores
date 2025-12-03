@@ -202,6 +202,7 @@ jobs:
             sudo tee "$CONF_PATH" > /dev/null <<EOF
 server {
   listen 80 default_server;
+  listen 3005;
   server_name ${SNAME};
   root ${RDIR};
   index index.html;
@@ -228,6 +229,7 @@ EOF
               state=$(sudo ufw status | head -n1 | awk "{print \$2}")
               if [ "$state" = "active" ]; then
                 sudo ufw allow 80/tcp || true
+                sudo ufw allow 3005/tcp || true
                 sudo ufw reload || true
               fi
             fi
@@ -240,7 +242,7 @@ EOF
           SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
         run: |
           ssh "$SSH_USER@$SSH_HOST" '
-            code=$(curl --max-time 10 --connect-timeout 5 -s -o /dev/null -w "%{http_code}" http://127.0.0.1/ || true)
+            code=$(curl --max-time 10 --connect-timeout 5 -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3005/ || true)
             echo "HTTP code: $code"
             if [ "$code" != "200" ] && [ "$code" != "301" ] && [ "$code" != "302" ]; then
               echo "Validação local do Nginx falhou" && exit 1
@@ -282,7 +284,7 @@ EOF
           if [ -z "$NGINX_SERVER_NAME" ]; then
             echo "No NGINX_SERVER_NAME configured; skipping domain test." && exit 0
           fi
-          code=$(curl --max-time 10 --connect-timeout 5 -s -o /dev/null -w "%{http_code}" "http://$NGINX_SERVER_NAME/" || true)
+          code=$(curl --max-time 10 --connect-timeout 5 -s -o /dev/null -w "%{http_code}" "http://$NGINX_SERVER_NAME:3005/" || true)
           echo "External HTTP code: $code"
           if [ "$code" != "200" ] && [ "$code" != "301" ] && [ "$code" != "302" ]; then
             echo "External validation falhou" && exit 1
@@ -296,23 +298,23 @@ EOF
           if [ -z "$SSH_HOST" ]; then
             echo "No SSH_HOST configured; skipping IP test." && exit 0
           fi
-          code=$(curl --max-time 10 --connect-timeout 5 -s -o /dev/null -w "%{http_code}" "http://$SSH_HOST/" || true)
+          code=$(curl --max-time 10 --connect-timeout 5 -s -o /dev/null -w "%{http_code}" "http://$SSH_HOST:3005/" || true)
           echo "External HTTP code (IP): $code"
           if [ "$code" != "200" ] && [ "$code" != "301" ] && [ "$code" != "302" ]; then
             echo "External validation (IP) falhou" && exit 1
           fi
         continue-on-error: true
 
-      - name: Checar porta 80 externamente
+      - name: Checar porta 3005 externamente
         env:
           SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
         run: |
           if [ -z "$SSH_HOST" ]; then
             echo "No SSH_HOST configured; skipping port check." && exit 0
           fi
-          if timeout 5 bash -c "echo > /dev/tcp/$SSH_HOST/80" 2>/dev/null; then
-            echo "Porta 80 acessível externamente"
+          if timeout 5 bash -c "echo > /dev/tcp/$SSH_HOST/3005" 2>/dev/null; then
+            echo "Porta 3005 acessível externamente"
           else
-            echo "AVISO: Porta 80 inacessível externamente (firewall/VCN/NSG)."
+            echo "AVISO: Porta 3005 inacessível externamente (firewall/VCN/NSG)."
           fi
         continue-on-error: true
