@@ -193,14 +193,12 @@ jobs:
             CONF_DIR="${NGINX_CONF_DIR:-/etc/nginx/conf.d}"
             CONF_PATH="${CONF_DIR}/hako-website.conf"
             RDIR="${REMOTE_DIR:-/var/www/hako-website}"
-            if [ -z "${NGINX_SERVER_NAME}" ]; then
-              echo "NGINX_SERVER_NAME not set. Skipping Nginx configuration." && exit 0
-            fi
+            SNAME="${NGINX_SERVER_NAME:-_}"
+            sudo mkdir -p "$CONF_DIR"
             {
               echo "server {"
-              echo "  listen 80;"
-              echo "  listen 3005;"
-              echo "  server_name ${NGINX_SERVER_NAME};"
+              echo "  listen 80 default_server;"
+              echo "  server_name ${SNAME};"
               echo "  root ${RDIR};"
               echo "  index index.html;"
               echo "  location / {"
