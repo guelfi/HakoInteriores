@@ -254,3 +254,17 @@ jobs:
             echo "External validation (IP) falhou" && exit 1
           fi
         continue-on-error: true
+
+      - name: Checar porta 80 externamente
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+        run: |
+          if [ -z "$SSH_HOST" ]; then
+            echo "No SSH_HOST configured; skipping port check." && exit 0
+          fi
+          if timeout 5 bash -c "echo > /dev/tcp/$SSH_HOST/80" 2>/dev/null; then
+            echo "Porta 80 acessível externamente"
+          else
+            echo "AVISO: Porta 80 inacessível externamente (firewall/VCN/NSG)."
+          fi
+        continue-on-error: true
