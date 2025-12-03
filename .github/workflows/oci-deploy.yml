@@ -9,10 +9,25 @@ on:
 jobs:
   deploy-object-storage:
     runs-on: ubuntu-latest
-    if: ${{ secrets.OCI_TENANCY_ID != '' && secrets.OCI_USER_ID != '' && secrets.OCI_FINGERPRINT != '' && secrets.OCI_REGION != '' && secrets.OCI_PRIVATE_KEY != '' && secrets.OCI_BUCKET != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate required OCI secrets
+        env:
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY_ID }}
+          OCI_USER: ${{ secrets.OCI_USER_ID }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_REGION: ${{ secrets.OCI_REGION }}
+          OCI_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+          OCI_BUCKET: ${{ secrets.OCI_BUCKET }}
+        run: |
+          set -e
+          for v in OCI_TENANCY OCI_USER OCI_FINGERPRINT OCI_REGION OCI_KEY OCI_BUCKET; do
+            if [ -z "${!v}" ]; then
+              echo "Missing secret: $v" && exit 1
+            fi
+          done
 
       - name: Detect accidental private keys in repo
         run: |
@@ -58,10 +73,22 @@ jobs:
 
   deploy-compute-ssh:
     runs-on: ubuntu-latest
-    if: ${{ secrets.SSH_HOST != '' && secrets.SSH_USER != '' && secrets.SSH_PRIVATE_KEY != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate required SSH secrets
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -e
+          for v in SSH_HOST SSH_USER SSH_PRIVATE_KEY; do
+            if [ -z "${!v}" ]; then
+              echo "Missing secret: $v" && exit 1
+            fi
+          done
 
       - name: Setup SSH
         env:
@@ -120,7 +147,6 @@ jobs:
           rsync -avz --delete --exclude ".git" --exclude ".github" ./ "$SSH_USER@$SSH_HOST:$RDIR/"
 
       - name: Configurar Nginx para servir estático
-        if: ${{ secrets.NGINX_CONF_DIR != '' && secrets.NGINX_SERVER_NAME != '' }}
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -133,6 +159,9 @@ jobs:
             CONF_DIR="${NGINX_CONF_DIR:-/etc/nginx/conf.d}"
             CONF_PATH="${CONF_DIR}/hako-website.conf"
             RDIR="${REMOTE_DIR:-/var/www/hako-website}"
+            if [ -z "${NGINX_SERVER_NAME}" ]; then
+              echo "NGINX_SERVER_NAME not set. Skipping Nginx configuration." && exit 0
+            fi
             {
               echo "server {"
               echo "  listen 80;"
@@ -167,22 +196,26 @@ jobs:
           '
 
       - name: External test (domain via runner)
-        if: ${{ secrets.NGINX_SERVER_NAME != '' }}
         env:
           NGINX_SERVER_NAME: ${{ secrets.NGINX_SERVER_NAME }}
         run: |
-          code=$(curl -s -o /dev/null -w "%{http_code}" "http://${NGINX_SERVER_NAME}/" || true)
+          if [ -z "$NGINX_SERVER_NAME" ]; then
+            echo "No NGINX_SERVER_NAME configured; skipping domain test." && exit 0
+          fi
+          code=$(curl -s -o /dev/null -w "%{http_code}" "http://$NGINX_SERVER_NAME/" || true)
           echo "External HTTP code: $code"
           if [ "$code" != "200" ] && [ "$code" != "301" ] && [ "$code" != "302" ]; then
             echo "External validation falhou" && exit 1
           fi
 
       - name: External test (IP fallback via runner)
-        if: ${{ secrets.NGINX_SERVER_NAME == '' && secrets.SSH_HOST != '' }}
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
         run: |
-          code=$(curl -s -o /dev/null -w "%{http_code}" "http://${SSH_HOST}/" || true)
+          if [ -z "$SSH_HOST" ]; then
+            echo "No SSH_HOST configured; skipping IP test." && exit 0
+          fi
+          code=$(curl -s -o /dev/null -w "%{http_code}" "http://$SSH_HOST/" || true)
           echo "External HTTP code (IP): $code"
           if [ "$code" != "200" ] && [ "$code" != "301" ] && [ "$code" != "302" ]; then
             echo "External validation (IP) falhou" && exit 1
