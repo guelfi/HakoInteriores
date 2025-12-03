@@ -246,6 +246,34 @@ jobs:
               echo "Validação local do Nginx falhou" && exit 1
             fi
           '
+        continue-on-error: true
+
+      - name: Diagnóstico Nginx
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+          NGINX_CONF_DIR: ${{ secrets.NGINX_CONF_DIR || vars.NGINX_CONF_DIR }}
+          REMOTE_DIR: ${{ secrets.REMOTE_DIR || vars.REMOTE_DIR }}
+        run: |
+          ssh "$SSH_USER@$SSH_HOST" '
+            CONF_DIR="${NGINX_CONF_DIR:-/etc/nginx/conf.d}"
+            CONF_PATH="${CONF_DIR}/hako-website.conf"
+            RDIR="${REMOTE_DIR:-/var/www/hako-website}"
+            echo "=== conf path ==="
+            echo "$CONF_PATH"
+            echo "=== conf content ==="
+            sudo sed -n '1,200p' "$CONF_PATH" || true
+            echo "=== nginx -t ==="
+            sudo nginx -t || true
+            echo "=== listen 80 ==="
+            sudo ss -tlnp | grep ':80' || true
+            echo "=== file access (www-data) ==="
+            id www-data || true
+            sudo -u www-data test -r "$RDIR/index.html" && echo readable || echo not readable
+            sudo -u www-data ls -l "$RDIR/index.html" || true
+            echo "=== error.log (tail) ==="
+            sudo tail -n 100 /var/log/nginx/error.log || true
+          '
 
       - name: External test (domain via runner)
         env:
