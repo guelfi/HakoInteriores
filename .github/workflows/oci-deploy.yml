@@ -13,21 +13,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate required OCI secrets
+      - name: Check required OCI credentials
+        id: check_oci
         env:
-          OCI_TENANCY: ${{ secrets.OCI_TENANCY_ID }}
-          OCI_USER: ${{ secrets.OCI_USER_ID }}
-          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
-          OCI_REGION: ${{ secrets.OCI_REGION }}
-          OCI_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
-          OCI_BUCKET: ${{ secrets.OCI_BUCKET }}
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY_ID || vars.OCI_TENANCY_ID }}
+          OCI_USER: ${{ secrets.OCI_USER_ID || vars.OCI_USER_ID }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT || vars.OCI_FINGERPRINT }}
+          OCI_REGION: ${{ secrets.OCI_REGION || vars.OCI_REGION }}
+          OCI_KEY: ${{ secrets.OCI_PRIVATE_KEY || vars.OCI_PRIVATE_KEY }}
+          OCI_BUCKET: ${{ secrets.OCI_BUCKET || vars.OCI_BUCKET }}
         run: |
-          set -e
+          missing=()
           for v in OCI_TENANCY OCI_USER OCI_FINGERPRINT OCI_REGION OCI_KEY OCI_BUCKET; do
             if [ -z "${!v}" ]; then
-              echo "Missing secret: $v" && exit 1
+              missing+=("$v")
             fi
           done
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "has_oci=true" >> $GITHUB_OUTPUT
+            echo "All OCI credentials present"
+          else
+            echo "has_oci=false" >> $GITHUB_OUTPUT
+            echo "Missing OCI credentials: ${missing[*]}"
+          fi
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "has_oci=true" >> $GITHUB_OUTPUT
+            echo "All OCI secrets present"
+          else
+            echo "has_oci=false" >> $GITHUB_OUTPUT
+            echo "Missing OCI secrets: ${missing[*]}"
+          fi
 
       - name: Detect accidental private keys in repo
         run: |
@@ -41,17 +56,21 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+        if: steps.check_oci.outputs.has_oci == 'true'
+        if: steps.check_oci.outputs.has_oci == 'true'
 
       - name: Install OCI CLI
         run: pip install oci-cli
+        if: steps.check_oci.outputs.has_oci == 'true'
+        if: steps.check_oci.outputs.has_oci == 'true'
 
       - name: Configure OCI
         env:
-          OCI_TENANCY: ${{ secrets.OCI_TENANCY_ID }}
-          OCI_USER: ${{ secrets.OCI_USER_ID }}
-          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
-          OCI_REGION: ${{ secrets.OCI_REGION }}
-          OCI_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY_ID || vars.OCI_TENANCY_ID }}
+          OCI_USER: ${{ secrets.OCI_USER_ID || vars.OCI_USER_ID }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT || vars.OCI_FINGERPRINT }}
+          OCI_REGION: ${{ secrets.OCI_REGION || vars.OCI_REGION }}
+          OCI_KEY: ${{ secrets.OCI_PRIVATE_KEY || vars.OCI_PRIVATE_KEY }}
         run: |
           mkdir -p ~/.oci
           echo "$OCI_KEY" > ~/.oci/oci_api_key.pem
@@ -64,12 +83,14 @@ jobs:
           tenancy=${OCI_TENANCY}
           region=${OCI_REGION}
           EOF
+        if: steps.check_oci.outputs.has_oci == 'true'
 
       - name: Upload to OCI Object Storage
         env:
-          OCI_BUCKET: ${{ secrets.OCI_BUCKET }}
+          OCI_BUCKET: ${{ secrets.OCI_BUCKET || vars.OCI_BUCKET }}
         run: |
           oci os object bulk-upload --bucket-name "$OCI_BUCKET" --src-dir . --overwrite true
+        if: steps.check_oci.outputs.has_oci == 'true'
 
   deploy-compute-ssh:
     runs-on: ubuntu-latest
@@ -77,26 +98,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate required SSH secrets
+      - name: Check required SSH credentials
+        id: check_ssh
         env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY || vars.SSH_PRIVATE_KEY }}
         run: |
-          set -e
+          missing=()
           for v in SSH_HOST SSH_USER SSH_PRIVATE_KEY; do
             if [ -z "${!v}" ]; then
-              echo "Missing secret: $v" && exit 1
+              missing+=("$v")
             fi
           done
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "has_ssh=true" >> $GITHUB_OUTPUT
+            echo "All SSH secrets present"
+          else
+            echo "has_ssh=false" >> $GITHUB_OUTPUT
+            echo "Missing SSH secrets: ${missing[*]}"
+          fi
 
       - name: Setup SSH
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY || vars.SSH_PRIVATE_KEY }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+        if: steps.check_ssh.outputs.has_ssh == 'true'
 
       - name: Validate SSH key format and permissions
         run: |
@@ -111,48 +141,53 @@ jobs:
           if ! grep -qE '-----BEGIN (OPENSSH|RSA) PRIVATE KEY-----' ~/.ssh/id_rsa; then
             echo "Private key format not recognized (expected OPENSSH or RSA)" && exit 1
           fi
+        if: steps.check_ssh.outputs.has_ssh == 'true'
 
       - name: Add remote host to known_hosts
         env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
         run: |
           ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+        if: steps.check_ssh.outputs.has_ssh == 'true'
 
       - name: Test SSH connectivity (handshake)
         env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
         run: |
           set -e
           ssh -o BatchMode=yes "$SSH_USER@$SSH_HOST" echo ok
+        if: steps.check_ssh.outputs.has_ssh == 'true'
 
       - name: Check passwordless sudo availability
         env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
         run: |
           ssh "$SSH_USER@$SSH_HOST" 'sudo -n true 2>/dev/null && echo "passwordless sudo: OK" || (echo "passwordless sudo: NOT AVAILABLE"; exit 1)'
+        if: steps.check_ssh.outputs.has_ssh == 'true'
 
       - name: Upload site to remote
         env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          REMOTE_DIR: ${{ secrets.REMOTE_DIR }}
-          SERVICE_USER: ${{ secrets.SERVICE_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+          REMOTE_DIR: ${{ secrets.REMOTE_DIR || vars.REMOTE_DIR }}
+          SERVICE_USER: ${{ secrets.SERVICE_USER || vars.SERVICE_USER }}
         run: |
           RDIR=${REMOTE_DIR:-/var/www/hako-website}
           SUSER=${SERVICE_USER:-opc}
           ssh "$SSH_USER@$SSH_HOST" sudo mkdir -p "$RDIR"
           ssh "$SSH_USER@$SSH_HOST" sudo chown -R "$SUSER":"$SUSER" "$RDIR"
           rsync -avz --delete --exclude ".git" --exclude ".github" ./ "$SSH_USER@$SSH_HOST:$RDIR/"
+        if: steps.check_ssh.outputs.has_ssh == 'true'
 
       - name: Configurar Nginx para servir estático
         env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          NGINX_CONF_DIR: ${{ secrets.NGINX_CONF_DIR }}
-          NGINX_SERVER_NAME: ${{ secrets.NGINX_SERVER_NAME }}
-          REMOTE_DIR: ${{ secrets.REMOTE_DIR }}
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+          NGINX_CONF_DIR: ${{ secrets.NGINX_CONF_DIR || vars.NGINX_CONF_DIR }}
+          NGINX_SERVER_NAME: ${{ secrets.NGINX_SERVER_NAME || vars.NGINX_SERVER_NAME }}
+          REMOTE_DIR: ${{ secrets.REMOTE_DIR || vars.REMOTE_DIR }}
         run: |
           ssh "$SSH_USER@$SSH_HOST" bash -lc '
             set -e
@@ -197,7 +232,7 @@ jobs:
 
       - name: External test (domain via runner)
         env:
-          NGINX_SERVER_NAME: ${{ secrets.NGINX_SERVER_NAME }}
+          NGINX_SERVER_NAME: ${{ secrets.NGINX_SERVER_NAME || vars.NGINX_SERVER_NAME }}
         run: |
           if [ -z "$NGINX_SERVER_NAME" ]; then
             echo "No NGINX_SERVER_NAME configured; skipping domain test." && exit 0
@@ -210,7 +245,7 @@ jobs:
 
       - name: External test (IP fallback via runner)
         env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
         run: |
           if [ -z "$SSH_HOST" ]; then
             echo "No SSH_HOST configured; skipping IP test." && exit 0
