@@ -218,6 +218,22 @@ jobs:
             sudo systemctl reload nginx
           '
 
+      - name: Liberar porta 80 no firewall (ufw)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+        run: |
+          ssh "$SSH_USER@$SSH_HOST" '
+            if command -v ufw >/dev/null 2>&1; then
+              state=$(sudo ufw status | head -n1 | awk "{print \$2}")
+              if [ "$state" = "active" ]; then
+                sudo ufw allow 80/tcp || true
+                sudo ufw reload || true
+              fi
+            fi
+          '
+        if: steps.check_ssh.outputs.has_ssh == 'true'
+
       - name: Teste local (Nginx)
         env:
           SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
