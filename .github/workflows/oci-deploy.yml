@@ -14,6 +14,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Detect accidental private keys in repo
+        run: |
+          set -e
+          found=$(find . -type f \( -name "*.pem" -o -name "*.key" \) ! -path "./.github/*" | wc -l)
+          if [ "$found" -gt 0 ]; then
+            echo "Detected $found key file(s) in repository. Remove them and use GitHub Secrets." && exit 1
+          fi
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -50,7 +58,7 @@ jobs:
 
   deploy-compute-ssh:
     runs-on: ubuntu-latest
-    if: ${{ secrets.SSH_HOST != '' }}
+    if: ${{ secrets.SSH_HOST != '' && secrets.SSH_USER != '' && secrets.SSH_PRIVATE_KEY != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -63,11 +71,40 @@ jobs:
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
+      - name: Validate SSH key format and permissions
+        run: |
+          set -e
+          test -s ~/.ssh/id_rsa || { echo "SSH key file is empty"; exit 1; }
+          ls -l ~/.ssh/id_rsa
+          perm=$(stat -c %a ~/.ssh/id_rsa || stat -f %Lp ~/.ssh/id_rsa)
+          echo "Detected permissions: $perm"
+          if [ "$perm" != "600" ]; then
+            echo "Invalid permissions on private key; expected 600" && exit 1
+          fi
+          if ! grep -qE '-----BEGIN (OPENSSH|RSA) PRIVATE KEY-----' ~/.ssh/id_rsa; then
+            echo "Private key format not recognized (expected OPENSSH or RSA)" && exit 1
+          fi
+
       - name: Add remote host to known_hosts
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
         run: |
           ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+
+      - name: Test SSH connectivity (handshake)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -e
+          ssh -o BatchMode=yes "$SSH_USER@$SSH_HOST" echo ok
+
+      - name: Check passwordless sudo availability
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          ssh "$SSH_USER@$SSH_HOST" 'sudo -n true 2>/dev/null && echo "passwordless sudo: OK" || (echo "passwordless sudo: NOT AVAILABLE"; exit 1)'
 
       - name: Upload site to remote
         env:
@@ -82,79 +119,50 @@ jobs:
           ssh "$SSH_USER@$SSH_HOST" sudo chown -R "$SUSER":"$SUSER" "$RDIR"
           rsync -avz --delete --exclude ".git" --exclude ".github" ./ "$SSH_USER@$SSH_HOST:$RDIR/"
 
-      - name: Configure systemd service
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          REMOTE_DIR: ${{ secrets.REMOTE_DIR }}
-          SERVICE_USER: ${{ secrets.SERVICE_USER }}
-          SERVICE_NAME: ${{ secrets.SERVICE_NAME }}
-        run: |
-          ssh "$SSH_USER@$SSH_HOST" bash -lc '
-            set -e
-            NAME="${SERVICE_NAME:-hako-website}"
-            USER_RUN="${SERVICE_USER:-opc}"
-            UNIT_PATH="/etc/systemd/system/${NAME}.service"
-            RDIR="${REMOTE_DIR:-/var/www/hako-website}"
-            echo "[Unit]" | sudo tee "$UNIT_PATH" > /dev/null
-            echo "Description=${NAME} static server" | sudo tee -a "$UNIT_PATH" > /dev/null
-            echo "After=network.target" | sudo tee -a "$UNIT_PATH" > /dev/null
-            echo "" | sudo tee -a "$UNIT_PATH" > /dev/null
-            echo "[Service]" | sudo tee -a "$UNIT_PATH" > /dev/null
-            echo "Type=simple" | sudo tee -a "$UNIT_PATH" > /dev/null
-            echo "User=${USER_RUN}" | sudo tee -a "$UNIT_PATH" > /dev/null
-            echo "WorkingDirectory=${RDIR}" | sudo tee -a "$UNIT_PATH" > /dev/null
-            echo "ExecStart=/usr/bin/python3 -m http.server 3005 --bind 127.0.0.1 --directory ${RDIR}" | sudo tee -a "$UNIT_PATH" > /dev/null
-            echo "Restart=always" | sudo tee -a "$UNIT_PATH" > /dev/null
-            echo "RestartSec=3" | sudo tee -a "$UNIT_PATH" > /dev/null
-            echo "" | sudo tee -a "$UNIT_PATH" > /dev/null
-            echo "[Install]" | sudo tee -a "$UNIT_PATH" > /dev/null
-            echo "WantedBy=multi-user.target" | sudo tee -a "$UNIT_PATH" > /dev/null
-            sudo systemctl daemon-reload
-            sudo systemctl enable --now "$NAME"
-            sudo systemctl status "$NAME" --no-pager || true
-          '
-
-      - name: Configure Nginx reverse proxy
+      - name: Configurar Nginx para servir estático
         if: ${{ secrets.NGINX_CONF_DIR != '' && secrets.NGINX_SERVER_NAME != '' }}
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           NGINX_CONF_DIR: ${{ secrets.NGINX_CONF_DIR }}
           NGINX_SERVER_NAME: ${{ secrets.NGINX_SERVER_NAME }}
+          REMOTE_DIR: ${{ secrets.REMOTE_DIR }}
         run: |
           ssh "$SSH_USER@$SSH_HOST" bash -lc '
             set -e
             CONF_DIR="${NGINX_CONF_DIR:-/etc/nginx/conf.d}"
             CONF_PATH="${CONF_DIR}/hako-website.conf"
-            sudo bash -lc "cat > \"$CONF_PATH\" <<EOF
+            RDIR="${REMOTE_DIR:-/var/www/hako-website}"
+            sudo tee "$CONF_PATH" > /dev/null <<EOF
 server {
   listen 80;
+  listen 3005;
   server_name ${NGINX_SERVER_NAME};
+  root ${RDIR};
+  index index.html;
   location / {
-    proxy_pass http://127.0.0.1:3005;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_http_version 1.1;
-    proxy_set_header Connection "";
+    try_files \$uri \$uri/ /index.html;
+  }
+  location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp)$ {
+    expires 7d;
+    add_header Cache-Control "public, immutable";
   }
 }
-EOF"
+EOF
             sudo nginx -t
             sudo systemctl reload nginx
           '
 
-      - name: Smoke test (local port 3005)
+      - name: Teste local (Nginx)
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
           ssh "$SSH_USER@$SSH_HOST" bash -lc '
-            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3005/ || true)
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1/ || true)
             echo "HTTP code: $code"
-            if [ "$code" != "200" ] && [ "$code" != "301" ]; then
-              echo "Smoke test falhou" && exit 1
+            if [ "$code" != "200" ] && [ "$code" != "301" ] && [ "$code" != "302" ]; then
+              echo "Validação local do Nginx falhou" && exit 1
             fi
           '
 
@@ -167,4 +175,15 @@ EOF"
           echo "External HTTP code: $code"
           if [ "$code" != "200" ] && [ "$code" != "301" ] && [ "$code" != "302" ]; then
             echo "External validation falhou" && exit 1
+          fi
+
+      - name: External test (IP fallback via runner)
+        if: ${{ secrets.NGINX_SERVER_NAME == '' && secrets.SSH_HOST != '' }}
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" "http://${SSH_HOST}/" || true)
+          echo "External HTTP code (IP): $code"
+          if [ "$code" != "200" ] && [ "$code" != "301" ] && [ "$code" != "302" ]; then
+            echo "External validation (IP) falhou" && exit 1
           fi
