@@ -9,6 +9,7 @@ on:
 jobs:
   deploy-object-storage:
     runs-on: ubuntu-latest
+    if: ${{ secrets.OCI_TENANCY_ID != '' && secrets.OCI_USER_ID != '' && secrets.OCI_FINGERPRINT != '' && secrets.OCI_REGION != '' && secrets.OCI_PRIVATE_KEY != '' && secrets.OCI_BUCKET != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -106,7 +107,7 @@ jobs:
             echo "ExecStart=/usr/bin/python3 -m http.server 3005 --bind 127.0.0.1 --directory ${RDIR}" | sudo tee -a "$UNIT_PATH" > /dev/null
             echo "Restart=always" | sudo tee -a "$UNIT_PATH" > /dev/null
             echo "RestartSec=3" | sudo tee -a "$UNIT_PATH" > /dev/null
-            echo "" | sudo tee -a "$UNIT_PATH" > 
+            echo "" | sudo tee -a "$UNIT_PATH" > /dev/null
             echo "[Install]" | sudo tee -a "$UNIT_PATH" > /dev/null
             echo "WantedBy=multi-user.target" | sudo tee -a "$UNIT_PATH" > /dev/null
             sudo systemctl daemon-reload
@@ -143,3 +144,27 @@ EOF"
             sudo nginx -t
             sudo systemctl reload nginx
           '
+
+      - name: Smoke test (local port 3005)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          ssh "$SSH_USER@$SSH_HOST" bash -lc '
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3005/ || true)
+            echo "HTTP code: $code"
+            if [ "$code" != "200" ] && [ "$code" != "301" ]; then
+              echo "Smoke test falhou" && exit 1
+            fi
+          '
+
+      - name: External test (domain via runner)
+        if: ${{ secrets.NGINX_SERVER_NAME != '' }}
+        env:
+          NGINX_SERVER_NAME: ${{ secrets.NGINX_SERVER_NAME }}
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" "http://${NGINX_SERVER_NAME}/" || true)
+          echo "External HTTP code: $code"
+          if [ "$code" != "200" ] && [ "$code" != "301" ] && [ "$code" != "302" ]; then
+            echo "External validation falhou" && exit 1
+          fi
