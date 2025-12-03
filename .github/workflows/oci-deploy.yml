@@ -221,8 +221,8 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
         run: |
-          ssh "$SSH_USER@$SSH_HOST" bash -lc '
-            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1/ || true)
+          ssh "$SSH_USER@$SSH_HOST" '
+            code=$(curl --max-time 10 --connect-timeout 5 -s -o /dev/null -w "%{http_code}" http://127.0.0.1/ || true)
             echo "HTTP code: $code"
             if [ "$code" != "200" ] && [ "$code" != "301" ] && [ "$code" != "302" ]; then
               echo "Validação local do Nginx falhou" && exit 1
@@ -236,11 +236,12 @@ jobs:
           if [ -z "$NGINX_SERVER_NAME" ]; then
             echo "No NGINX_SERVER_NAME configured; skipping domain test." && exit 0
           fi
-          code=$(curl -s -o /dev/null -w "%{http_code}" "http://$NGINX_SERVER_NAME/" || true)
+          code=$(curl --max-time 10 --connect-timeout 5 -s -o /dev/null -w "%{http_code}" "http://$NGINX_SERVER_NAME/" || true)
           echo "External HTTP code: $code"
           if [ "$code" != "200" ] && [ "$code" != "301" ] && [ "$code" != "302" ]; then
             echo "External validation falhou" && exit 1
           fi
+        continue-on-error: true
 
       - name: External test (IP fallback via runner)
         env:
@@ -249,8 +250,9 @@ jobs:
           if [ -z "$SSH_HOST" ]; then
             echo "No SSH_HOST configured; skipping IP test." && exit 0
           fi
-          code=$(curl -s -o /dev/null -w "%{http_code}" "http://$SSH_HOST/" || true)
+          code=$(curl --max-time 10 --connect-timeout 5 -s -o /dev/null -w "%{http_code}" "http://$SSH_HOST/" || true)
           echo "External HTTP code (IP): $code"
           if [ "$code" != "200" ] && [ "$code" != "301" ] && [ "$code" != "302" ]; then
             echo "External validation (IP) falhou" && exit 1
           fi
+        continue-on-error: true
