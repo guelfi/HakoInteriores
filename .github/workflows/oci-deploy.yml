@@ -1,0 +1,145 @@
+name: oci-deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy-object-storage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install OCI CLI
+        run: pip install oci-cli
+
+      - name: Configure OCI
+        env:
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY_ID }}
+          OCI_USER: ${{ secrets.OCI_USER_ID }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_REGION: ${{ secrets.OCI_REGION }}
+          OCI_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.oci
+          echo "$OCI_KEY" > ~/.oci/oci_api_key.pem
+          chmod 600 ~/.oci/oci_api_key.pem
+          cat > ~/.oci/config <<EOF
+          [DEFAULT]
+          user=${OCI_USER}
+          fingerprint=${OCI_FINGERPRINT}
+          key_file=~/.oci/oci_api_key.pem
+          tenancy=${OCI_TENANCY}
+          region=${OCI_REGION}
+          EOF
+
+      - name: Upload to OCI Object Storage
+        env:
+          OCI_BUCKET: ${{ secrets.OCI_BUCKET }}
+        run: |
+          oci os object bulk-upload --bucket-name "$OCI_BUCKET" --src-dir . --overwrite true
+
+  deploy-compute-ssh:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.SSH_HOST != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Add remote host to known_hosts
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload site to remote
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          REMOTE_DIR: ${{ secrets.REMOTE_DIR }}
+          SERVICE_USER: ${{ secrets.SERVICE_USER }}
+        run: |
+          RDIR=${REMOTE_DIR:-/var/www/hako-website}
+          SUSER=${SERVICE_USER:-opc}
+          ssh "$SSH_USER@$SSH_HOST" sudo mkdir -p "$RDIR"
+          ssh "$SSH_USER@$SSH_HOST" sudo chown -R "$SUSER":"$SUSER" "$RDIR"
+          rsync -avz --delete --exclude ".git" --exclude ".github" ./ "$SSH_USER@$SSH_HOST:$RDIR/"
+
+      - name: Configure systemd service
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          REMOTE_DIR: ${{ secrets.REMOTE_DIR }}
+          SERVICE_USER: ${{ secrets.SERVICE_USER }}
+          SERVICE_NAME: ${{ secrets.SERVICE_NAME }}
+        run: |
+          ssh "$SSH_USER@$SSH_HOST" bash -lc '
+            set -e
+            NAME="${SERVICE_NAME:-hako-website}"
+            USER_RUN="${SERVICE_USER:-opc}"
+            UNIT_PATH="/etc/systemd/system/${NAME}.service"
+            RDIR="${REMOTE_DIR:-/var/www/hako-website}"
+            echo "[Unit]" | sudo tee "$UNIT_PATH" > /dev/null
+            echo "Description=${NAME} static server" | sudo tee -a "$UNIT_PATH" > /dev/null
+            echo "After=network.target" | sudo tee -a "$UNIT_PATH" > /dev/null
+            echo "" | sudo tee -a "$UNIT_PATH" > /dev/null
+            echo "[Service]" | sudo tee -a "$UNIT_PATH" > /dev/null
+            echo "Type=simple" | sudo tee -a "$UNIT_PATH" > /dev/null
+            echo "User=${USER_RUN}" | sudo tee -a "$UNIT_PATH" > /dev/null
+            echo "WorkingDirectory=${RDIR}" | sudo tee -a "$UNIT_PATH" > /dev/null
+            echo "ExecStart=/usr/bin/python3 -m http.server 3005 --bind 127.0.0.1 --directory ${RDIR}" | sudo tee -a "$UNIT_PATH" > /dev/null
+            echo "Restart=always" | sudo tee -a "$UNIT_PATH" > /dev/null
+            echo "RestartSec=3" | sudo tee -a "$UNIT_PATH" > /dev/null
+            echo "" | sudo tee -a "$UNIT_PATH" > 
+            echo "[Install]" | sudo tee -a "$UNIT_PATH" > /dev/null
+            echo "WantedBy=multi-user.target" | sudo tee -a "$UNIT_PATH" > /dev/null
+            sudo systemctl daemon-reload
+            sudo systemctl enable --now "$NAME"
+            sudo systemctl status "$NAME" --no-pager || true
+          '
+
+      - name: Configure Nginx reverse proxy
+        if: ${{ secrets.NGINX_CONF_DIR != '' && secrets.NGINX_SERVER_NAME != '' }}
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          NGINX_CONF_DIR: ${{ secrets.NGINX_CONF_DIR }}
+          NGINX_SERVER_NAME: ${{ secrets.NGINX_SERVER_NAME }}
+        run: |
+          ssh "$SSH_USER@$SSH_HOST" bash -lc '
+            set -e
+            CONF_DIR="${NGINX_CONF_DIR:-/etc/nginx/conf.d}"
+            CONF_PATH="${CONF_DIR}/hako-website.conf"
+            sudo bash -lc "cat > \"$CONF_PATH\" <<EOF
+server {
+  listen 80;
+  server_name ${NGINX_SERVER_NAME};
+  location / {
+    proxy_pass http://127.0.0.1:3005;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+  }
+}
+EOF"
+            sudo nginx -t
+            sudo systemctl reload nginx
+          '

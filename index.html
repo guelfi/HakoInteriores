@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Móveis planejados de alto padrão, design exclusivo e acabamento premium. Hako Interiores transforma ambientes com marcenaria sob medida.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <meta property="og:title" content="Hako Interiores | Móveis Planejados de Alto Padrão">
+    <meta property="og:description" content="Móveis planejados de alto padrão com design exclusivo e acabamento premium.">
+    <title>Hako Interiores | Móveis Planejados de Alto Padrão</title>
+    <!-- Fontes do Google (Elegantes e Modernas) -->
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <!-- Ícones -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+
+    <!-- Cabeçalho / Menu -->
+    <header id="header">
+        <div class="container">
+            <a href="#home" class="logo" aria-label="Início">HAKO<span>INTERIORES</span></a>
+            <nav role="navigation">
+                <ul class="nav-links" id="primary-navigation">
+                    <li><a href="#home">Início</a></li>
+                    <li><a href="#sobre">A Marca</a></li>
+                    <li><a href="#portfolio">Projetos</a></li>
+                    <li><a href="#diferenciais">Diferenciais</a></li>
+                    <li><a href="#contato" class="btn-contato">Orçamento</a></li>
+                </ul>
+                <div class="hamburger" aria-label="Abrir menu" role="button" aria-controls="primary-navigation" aria-expanded="false">
+                    <i class="fas fa-bars"></i>
+                </div>
+            </nav>
+        </div>
+    </header>
+    <main id="main-content">
+    <!-- Seção Hero (Capa) -->
+    <section id="home" class="hero" tabindex="-1">
+        <div class="hero-content">
+            <h1>A Arte de Morar Bem</h1>
+            <p>Móveis planejados com design exclusivo e acabamento impecável.</p>
+            <a href="#portfolio" class="btn-primary">Ver Projetos</a>
+        </div>
+    </section>
+
+    <!-- Sobre -->
+    <section id="sobre" class="section" tabindex="-1">
+        <div class="container split-screen">
+            <div class="text-block">
+                <h2>Essência e Tradição</h2>
+                <p>Assim como a referência que você busca, nossa marcenaria une a tecnologia de ponta com o cuidado artesanal. Cada peça é desenhada para se integrar perfeitamente ao seu espaço, valorizando a arquitetura e o conforto.</p>
+                <p>Trabalhamos com as melhores matérias-primas do mercado, garantindo durabilidade e sofisticação.</p>
+            </div>
+            <div class="image-block">
+                <img src="images/marceneiro-trabalhando.png" alt="Marceneiro trabalhando" loading="lazy" decoding="async">
+            </div>
+        </div>
+    </section>
+
+    <!-- Portfólio / Galeria -->
+    <section id="portfolio" class="section bg-light" tabindex="-1">
+        <div class="container">
+            <div class="section-header">
+                <h2>Nossos Projetos</h2>
+                <p>Inspire-se com ambientes transformados.</p>
+            </div>
+            
+            <div class="gallery-grid">
+                <div class="gallery-item">
+                    <img src="images/cozinha-planejada.png" alt="Cozinha Planejada" loading="lazy" decoding="async">
+                    <div class="overlay">
+                        <h3>Cozinhas</h3>
+                    </div>
+                </div>
+                <div class="gallery-item">
+                    <img src="images/dormitorio-luxo.jpg" alt="Dormitório" loading="lazy" decoding="async">
+                    <div class="overlay">
+                        <h3>Dormitórios</h3>
+                    </div>
+                </div>
+                <div class="gallery-item">
+                    <img src="images/living-home.jpg" alt="Living" loading="lazy" decoding="async">
+                    <div class="overlay">
+                        <h3>Living & Home</h3>
+                    </div>
+                </div>
+                <div class="gallery-item">
+                    <img src="images/banheiros-luxo.jpg" alt="Banheiros" loading="lazy" decoding="async">
+                    <div class="overlay">
+                        <h3>Banheiros</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Diferenciais -->
+    <section id="diferenciais" class="section" tabindex="-1">
+        <div class="container">
+            <div class="features-grid">
+                <div class="feature-card">
+                    <i class="fas fa-pencil-ruler"></i>
+                    <h3>Design Personalizado</h3>
+                    <p>Projetos 100% sob medida para sua necessidade.</p>
+                </div>
+                <div class="feature-card">
+                    <i class="fas fa-gem"></i>
+                    <h3>Acabamento Premium</h3>
+                    <p>Ferragens e materiais de altíssima qualidade.</p>
+                </div>
+                <div class="feature-card">
+                    <i class="fas fa-clock"></i>
+                    <h3>Entrega Pontual</h3>
+                    <p>Respeito absoluto aos prazos acordados.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contato -->
+    <section id="contato" class="section bg-dark" tabindex="-1">
+        <div class="container">
+            <div class="section-header text-white">
+                <h2>Vamos conversar?</h2>
+                <p>Solicite um orçamento ou agende uma visita ao showroom.</p>
+            </div>
+            <form class="contact-form">
+                <input type="text" placeholder="Seu Nome" required>
+                <input type="email" placeholder="Seu E-mail" required>
+                <input type="tel" placeholder="Seu Telefone/WhatsApp" required>
+                <textarea placeholder="Conte um pouco sobre seu projeto..." rows="5"></textarea>
+                <button type="submit" class="btn-primary">Enviar Mensagem</button>
+            </form>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container footer-content">
+            <div class="footer-info">
+                <h4>HAKO Interiores</h4>
+                <p>Transformando madeira em sonhos.</p>
+            </div>
+            <div class="footer-contact">
+                <p><i class="fas fa-map-marker-alt"></i> Av. Principal, 1000 - São Paulo, SP</p>
+                <p><i class="fas fa-phone"></i> (11) 99999-9999</p>
+                <p><i class="fas fa-envelope"></i> contato@hakointeriores.com.br</p>
+            </div>
+            <div class="footer-social">
+                <a href="#" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+                <a href="#" aria-label="Facebook"><i class="fab fa-facebook"></i></a>
+                <a href="#" aria-label="WhatsApp"><i class="fab fa-whatsapp"></i></a>
+            </div>
+        </div>
+        <div class="copyright">
+            <p>&copy; 2025 Hako Interiores. Todos os direitos reservados.</p>
+        </div>
+    </footer>
+    </main>
+
+    <div class="scroll-hint-stack" aria-hidden="true">
+        <button class="scroll-hint-btn" type="button" data-dir="up" aria-label="Deslize para cima"><i class="fas fa-hand-point-up"></i></button>
+        <button class="scroll-hint-btn" type="button" data-dir="down" aria-label="Deslize para baixo"><i class="fas fa-hand-point-down"></i></button>
+    </div>
+    <script src="index.js"></script>
+</body>
+</html>
