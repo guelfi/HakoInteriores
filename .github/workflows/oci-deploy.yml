@@ -199,21 +199,21 @@ jobs:
               sudo rm -f "/etc/nginx/sites-enabled/default"
             fi
             sudo mkdir -p "$CONF_DIR"
-            {
-              echo "server {"
-              echo "  listen 80 default_server;"
-              echo "  server_name ${SNAME};"
-              echo "  root ${RDIR};"
-              echo "  index index.html;"
-              echo "  location / {"
-              echo "    try_files \\$uri \\$uri/ /index.html;"
-              echo "  }"
-              echo "  location ~* \\.(js|css|png|jpg|jpeg|gif|svg|ico|webp)$ {"
-              echo "    expires 7d;"
-              echo "    add_header Cache-Control \"public, immutable\";"
-              echo "  }"
-              echo "}"
-            } | sudo tee "$CONF_PATH" > /dev/null
+            sudo tee "$CONF_PATH" > /dev/null <<EOF
+server {
+  listen 80 default_server;
+  server_name ${SNAME};
+  root ${RDIR};
+  index index.html;
+  location / {
+    try_files \$uri \$uri/ /index.html;
+  }
+  location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp)$ {
+    expires 7d;
+    add_header Cache-Control "public, immutable";
+  }
+}
+EOF
             sudo nginx -t
             sudo systemctl reload nginx
           '
