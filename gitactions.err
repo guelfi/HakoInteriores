@@ -1,0 +1,323 @@
+Workflow file for this run
+.github/workflows/oci-deploy.yml at 6fc5c9f
+name: oci-deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy-object-storage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check required OCI credentials
+        id: check_oci
+        env:
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY_ID || vars.OCI_TENANCY_ID }}
+          OCI_USER: ${{ secrets.OCI_USER_ID || vars.OCI_USER_ID }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT || vars.OCI_FINGERPRINT }}
+          OCI_REGION: ${{ secrets.OCI_REGION || vars.OCI_REGION }}
+          OCI_KEY: ${{ secrets.OCI_PRIVATE_KEY || vars.OCI_PRIVATE_KEY }}
+          OCI_BUCKET: ${{ secrets.OCI_BUCKET || vars.OCI_BUCKET }}
+        run: |
+          missing=()
+          for v in OCI_TENANCY OCI_USER OCI_FINGERPRINT OCI_REGION OCI_KEY OCI_BUCKET; do
+            if [ -z "${!v}" ]; then
+              missing+=("$v")
+            fi
+          done
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "has_oci=true" >> $GITHUB_OUTPUT
+            echo "All OCI credentials present"
+          else
+            echo "has_oci=false" >> $GITHUB_OUTPUT
+            echo "Missing OCI credentials: ${missing[*]}"
+          fi
+      - name: Detect accidental private keys in repo
+        run: |
+          set -e
+          found=$(find . -type f \( -name "*.pem" -o -name "*.key" \) ! -path "./.github/*" | wc -l)
+          if [ "$found" -gt 0 ]; then
+            echo "Detected $found key file(s) in repository. Remove them and use GitHub Secrets." && exit 1
+          fi
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+        if: steps.check_oci.outputs.has_oci == 'true'
+
+      - name: Install OCI CLI
+        run: pip install oci-cli
+        if: steps.check_oci.outputs.has_oci == 'true'
+
+      - name: Configure OCI
+        env:
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY_ID || vars.OCI_TENANCY_ID }}
+          OCI_USER: ${{ secrets.OCI_USER_ID || vars.OCI_USER_ID }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT || vars.OCI_FINGERPRINT }}
+          OCI_REGION: ${{ secrets.OCI_REGION || vars.OCI_REGION }}
+          OCI_KEY: ${{ secrets.OCI_PRIVATE_KEY || vars.OCI_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.oci
+          echo "$OCI_KEY" > ~/.oci/oci_api_key.pem
+          chmod 600 ~/.oci/oci_api_key.pem
+          cat > ~/.oci/config <<EOF
+          [DEFAULT]
+          user=${OCI_USER}
+          fingerprint=${OCI_FINGERPRINT}
+          key_file=~/.oci/oci_api_key.pem
+          tenancy=${OCI_TENANCY}
+          region=${OCI_REGION}
+          EOF
+        if: steps.check_oci.outputs.has_oci == 'true'
+
+      - name: Upload to OCI Object Storage
+        env:
+          OCI_BUCKET: ${{ secrets.OCI_BUCKET || vars.OCI_BUCKET }}
+        run: |
+          oci os object bulk-upload --bucket-name "$OCI_BUCKET" --src-dir . --overwrite true
+        if: steps.check_oci.outputs.has_oci == 'true'
+
+  deploy-compute-ssh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check required SSH credentials
+        id: check_ssh
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY || vars.SSH_PRIVATE_KEY }}
+        run: |
+          missing=()
+          for v in SSH_HOST SSH_USER SSH_PRIVATE_KEY; do
+            if [ -z "${!v}" ]; then
+              missing+=("$v")
+            fi
+          done
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "has_ssh=true" >> $GITHUB_OUTPUT
+            echo "All SSH secrets present"
+          else
+            echo "has_ssh=false" >> $GITHUB_OUTPUT
+            echo "Missing SSH secrets: ${missing[*]}"
+          fi
+      - name: Setup SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY || vars.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+        if: steps.check_ssh.outputs.has_ssh == 'true'
+
+      - name: Validate SSH key format and permissions
+        run: |
+          set -e
+          test -s ~/.ssh/id_rsa || { echo "SSH key file is empty"; exit 1; }
+          ls -l ~/.ssh/id_rsa
+          perm=$(stat -c %a ~/.ssh/id_rsa || stat -f %Lp ~/.ssh/id_rsa)
+          echo "Detected permissions: $perm"
+          if [ "$perm" != "600" ]; then
+            echo "Invalid permissions on private key; expected 600" && exit 1
+          fi
+          if ! grep -qE -- '^-----BEGIN (OPENSSH|RSA|EC)? PRIVATE KEY-----' ~/.ssh/id_rsa; then
+            echo "Private key format not recognized (expected OPENSSH or RSA)" && exit 1
+          fi
+        if: steps.check_ssh.outputs.has_ssh == 'true'
+
+      - name: Add remote host to known_hosts
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+        run: |
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+        if: steps.check_ssh.outputs.has_ssh == 'true'
+
+      - name: Test SSH connectivity (handshake)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+        run: |
+          set -e
+          ssh -o BatchMode=yes "$SSH_USER@$SSH_HOST" echo ok
+        if: steps.check_ssh.outputs.has_ssh == 'true'
+
+      - name: Check passwordless sudo availability
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+        run: |
+          ssh "$SSH_USER@$SSH_HOST" 'sudo -n true 2>/dev/null && echo "passwordless sudo: OK" || (echo "passwordless sudo: NOT AVAILABLE"; exit 1)'
+        if: steps.check_ssh.outputs.has_ssh == 'true'
+
+      - name: Upload site to remote
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+          REMOTE_DIR: ${{ secrets.REMOTE_DIR || vars.REMOTE_DIR }}
+          SERVICE_USER: ${{ secrets.SERVICE_USER || vars.SERVICE_USER }}
+        run: |
+          RDIR=${REMOTE_DIR:-/var/www/hako-website}
+          SUSER=${SERVICE_USER:-opc}
+          ssh "$SSH_USER@$SSH_HOST" sudo mkdir -p "$RDIR"
+          ssh "$SSH_USER@$SSH_HOST" sudo chown -R "$SUSER":"$SUSER" "$RDIR"
+          rsync -avz --delete \
+            --exclude ".git" \
+            --exclude ".github" \
+            --exclude ".trae" \
+            --exclude ".gitignore" \
+            --exclude ".vercelignore" \
+            --rsync-path="sudo rsync" \
+            --chown "$SUSER:$SUSER" \
+            ./ "$SSH_USER@$SSH_HOST:$RDIR/"
+        if: steps.check_ssh.outputs.has_ssh == 'true'
+
+      - name: Configurar Nginx para servir estático
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+          NGINX_CONF_DIR: ${{ secrets.NGINX_CONF_DIR || vars.NGINX_CONF_DIR }}
+          NGINX_SERVER_NAME: ${{ secrets.NGINX_SERVER_NAME || vars.NGINX_SERVER_NAME }}
+          REMOTE_DIR: ${{ secrets.REMOTE_DIR || vars.REMOTE_DIR }}
+        run: |
+          ssh "$SSH_USER@$SSH_HOST" '
+            set -e
+            CONF_DIR="${NGINX_CONF_DIR:-/etc/nginx/conf.d}"
+            CONF_PATH="${CONF_DIR}/hako-website.conf"
+            RDIR="${REMOTE_DIR:-/var/www/hako-website}"
+            SNAME="${NGINX_SERVER_NAME:-_}"
+            # Disable Ubuntu default site to avoid duplicate default_server
+            if [ -e "/etc/nginx/sites-enabled/default" ]; then
+              sudo rm -f "/etc/nginx/sites-enabled/default"
+            fi
+            sudo mkdir -p "$CONF_DIR"
+            sudo tee "$CONF_PATH" > /dev/null <<EOF
+server {
+ Check failure on line 203 in .github/workflows/oci-deploy.yml
+
+
+GitHub Actions
+/ .github/workflows/oci-deploy.yml
+Invalid workflow file
+
+You have an error in your yaml syntax on line 203
+  listen 80 default_server;
+  server_name ${SNAME};
+  root ${RDIR};
+  index index.html;
+  location / {
+    try_files \$uri \$uri/ /index.html;
+  }
+  location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp)$ {
+    expires 7d;
+    add_header Cache-Control "public, immutable";
+  }
+}
+EOF
+            sudo nginx -t
+            sudo systemctl reload nginx
+          '
+      - name: Liberar porta 80 no firewall (ufw)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+        run: |
+          ssh "$SSH_USER@$SSH_HOST" '
+            if command -v ufw >/dev/null 2>&1; then
+              state=$(sudo ufw status | head -n1 | awk "{print \$2}")
+              if [ "$state" = "active" ]; then
+                sudo ufw allow 80/tcp || true
+                sudo ufw reload || true
+              fi
+            fi
+          '
+        if: steps.check_ssh.outputs.has_ssh == 'true'
+
+      - name: Teste local (Nginx)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+        run: |
+          ssh "$SSH_USER@$SSH_HOST" '
+            code=$(curl --max-time 10 --connect-timeout 5 -s -o /dev/null -w "%{http_code}" http://127.0.0.1/ || true)
+            echo "HTTP code: $code"
+            if [ "$code" != "200" ] && [ "$code" != "301" ] && [ "$code" != "302" ]; then
+              echo "Validação local do Nginx falhou" && exit 1
+            fi
+          '
+        continue-on-error: true
+
+      - name: Diagnóstico Nginx
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+          NGINX_CONF_DIR: ${{ secrets.NGINX_CONF_DIR || vars.NGINX_CONF_DIR }}
+          REMOTE_DIR: ${{ secrets.REMOTE_DIR || vars.REMOTE_DIR }}
+        run: |
+          ssh "$SSH_USER@$SSH_HOST" '
+            CONF_DIR="${NGINX_CONF_DIR:-/etc/nginx/conf.d}"
+            CONF_PATH="${CONF_DIR}/hako-website.conf"
+            RDIR="${REMOTE_DIR:-/var/www/hako-website}"
+            echo "=== conf path ==="
+            echo "$CONF_PATH"
+            echo "=== conf content ==="
+            sudo sed -n '1,200p' "$CONF_PATH" || true
+            echo "=== nginx -t ==="
+            sudo nginx -t || true
+            echo "=== listen 80 ==="
+            sudo ss -tlnp | grep ':80' || true
+            echo "=== file access (www-data) ==="
+            id www-data || true
+            sudo -u www-data test -r "$RDIR/index.html" && echo readable || echo not readable
+            sudo -u www-data ls -l "$RDIR/index.html" || true
+            echo "=== error.log (tail) ==="
+            sudo tail -n 100 /var/log/nginx/error.log || true
+          '
+      - name: External test (domain via runner)
+        env:
+          NGINX_SERVER_NAME: ${{ secrets.NGINX_SERVER_NAME || vars.NGINX_SERVER_NAME }}
+        run: |
+          if [ -z "$NGINX_SERVER_NAME" ]; then
+            echo "No NGINX_SERVER_NAME configured; skipping domain test." && exit 0
+          fi
+          code=$(curl --max-time 10 --connect-timeout 5 -s -o /dev/null -w "%{http_code}" "http://$NGINX_SERVER_NAME/" || true)
+          echo "External HTTP code: $code"
+          if [ "$code" != "200" ] && [ "$code" != "301" ] && [ "$code" != "302" ]; then
+            echo "External validation falhou" && exit 1
+          fi
+        continue-on-error: true
+
+      - name: External test (IP fallback via runner)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+        run: |
+          if [ -z "$SSH_HOST" ]; then
+            echo "No SSH_HOST configured; skipping IP test." && exit 0
+          fi
+          code=$(curl --max-time 10 --connect-timeout 5 -s -o /dev/null -w "%{http_code}" "http://$SSH_HOST/" || true)
+          echo "External HTTP code (IP): $code"
+          if [ "$code" != "200" ] && [ "$code" != "301" ] && [ "$code" != "302" ]; then
+            echo "External validation (IP) falhou" && exit 1
+          fi
+        continue-on-error: true
+
+      - name: Checar porta 80 externamente
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+        run: |
+          if [ -z "$SSH_HOST" ]; then
+            echo "No SSH_HOST configured; skipping port check." && exit 0
+          fi
+          if timeout 5 bash -c "echo > /dev/tcp/$SSH_HOST/80" 2>/dev/null; then
+            echo "Porta 80 acessível externamente"
+          else
+            echo "AVISO: Porta 80 inacessível externamente (firewall/VCN/NSG)."
+          fi
+        continue-on-error: true
