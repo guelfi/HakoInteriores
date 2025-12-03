@@ -136,7 +136,7 @@ jobs:
           if [ "$perm" != "600" ]; then
             echo "Invalid permissions on private key; expected 600" && exit 1
           fi
-          if ! grep -qE '-----BEGIN (OPENSSH|RSA) PRIVATE KEY-----' ~/.ssh/id_rsa; then
+          if ! grep -qE -- '^-----BEGIN (OPENSSH|RSA|EC)? PRIVATE KEY-----' ~/.ssh/id_rsa; then
             echo "Private key format not recognized (expected OPENSSH or RSA)" && exit 1
           fi
         if: steps.check_ssh.outputs.has_ssh == 'true'
