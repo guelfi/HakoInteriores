@@ -36,13 +36,6 @@ jobs:
             echo "has_oci=false" >> $GITHUB_OUTPUT
             echo "Missing OCI credentials: ${missing[*]}"
           fi
-          if [ ${#missing[@]} -eq 0 ]; then
-            echo "has_oci=true" >> $GITHUB_OUTPUT
-            echo "All OCI secrets present"
-          else
-            echo "has_oci=false" >> $GITHUB_OUTPUT
-            echo "Missing OCI secrets: ${missing[*]}"
-          fi
 
       - name: Detect accidental private keys in repo
         run: |
@@ -176,7 +169,15 @@ jobs:
           SUSER=${SERVICE_USER:-opc}
           ssh "$SSH_USER@$SSH_HOST" sudo mkdir -p "$RDIR"
           ssh "$SSH_USER@$SSH_HOST" sudo chown -R "$SUSER":"$SUSER" "$RDIR"
-          rsync -avz --delete --exclude ".git" --exclude ".github" ./ "$SSH_USER@$SSH_HOST:$RDIR/"
+          rsync -avz --delete \
+            --exclude ".git" \
+            --exclude ".github" \
+            --exclude ".trae" \
+            --exclude ".gitignore" \
+            --exclude ".vercelignore" \
+            --rsync-path="sudo rsync" \
+            --chown "$SUSER:$SUSER" \
+            ./ "$SSH_USER@$SSH_HOST:$RDIR/"
         if: steps.check_ssh.outputs.has_ssh == 'true'
 
       - name: Configurar Nginx para servir estático
@@ -217,8 +218,8 @@ jobs:
 
       - name: Teste local (Nginx)
         env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
         run: |
           ssh "$SSH_USER@$SSH_HOST" bash -lc '
             code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1/ || true)
