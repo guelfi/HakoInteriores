@@ -188,12 +188,16 @@ jobs:
           NGINX_SERVER_NAME: ${{ secrets.NGINX_SERVER_NAME || vars.NGINX_SERVER_NAME }}
           REMOTE_DIR: ${{ secrets.REMOTE_DIR || vars.REMOTE_DIR }}
         run: |
-          ssh "$SSH_USER@$SSH_HOST" bash -lc '
+          ssh "$SSH_USER@$SSH_HOST" '
             set -e
             CONF_DIR="${NGINX_CONF_DIR:-/etc/nginx/conf.d}"
             CONF_PATH="${CONF_DIR}/hako-website.conf"
             RDIR="${REMOTE_DIR:-/var/www/hako-website}"
             SNAME="${NGINX_SERVER_NAME:-_}"
+            # Disable Ubuntu default site to avoid duplicate default_server
+            if [ -e "/etc/nginx/sites-enabled/default" ]; then
+              sudo rm -f "/etc/nginx/sites-enabled/default"
+            fi
             sudo mkdir -p "$CONF_DIR"
             {
               echo "server {"
