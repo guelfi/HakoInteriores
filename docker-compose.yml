@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  hako-website:
+    build: .
+    container_name: hako-website
+    ports:
+      - "3005:80"
+    restart: always
