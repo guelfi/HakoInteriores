@@ -1,0 +1,106 @@
+name: Deploy Hako to OCI
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Deploy to OCI
+      env:
+        OCI_HOST: ${{ secrets.OCI_HOST }}
+        OCI_USER: ${{ secrets.OCI_USERNAME }}
+        OCI_SSH_KEY: ${{ secrets.OCI_SSH_KEY }}
+      run: |
+        # Verificar secrets
+        if [ -z "$OCI_HOST" ] || [ -z "$OCI_USER" ] || [ -z "$OCI_SSH_KEY" ]; then
+          echo "❌ Secrets não configuradas."
+          exit 1
+        fi
+        
+        # Configurar SSH
+        mkdir -p ~/.ssh
+        echo "$OCI_SSH_KEY" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        
+        # Script de Deploy
+        cat > deploy_script.sh << 'EOF'
+        #!/bin/bash
+        set -e
+        
+        PROJECT_DIR="/var/www/Hako"
+        REPO_URL="https://github.com/guelfi/Hako.git"
+        
+        echo "🚀 Iniciando deploy do Hako..."
+        
+        # Criar diretório se não existir
+        sudo mkdir -p /var/www
+        
+        # Clone ou Pull
+        if [ ! -d "$PROJECT_DIR" ]; then
+          echo "📁 Clonando repositório..."
+          cd /var/www
+          sudo git clone $REPO_URL
+          sudo chown -R ubuntu:ubuntu $PROJECT_DIR
+          cd $PROJECT_DIR
+        else
+          echo "📁 Atualizando repositório..."
+          cd $PROJECT_DIR
+          sudo git fetch origin
+          sudo git reset --hard origin/main
+        fi
+        
+        # Garantir que Dockerfile e Compose existam (caso não estejam no repo ainda)
+        # Nota: Idealmente eles devem estar no repo, mas isso garante o deploy
+        if [ ! -f "Dockerfile" ]; then
+            echo "⚠️ Criando Dockerfile temporário..."
+            echo 'FROM nginx:alpine' > Dockerfile
+            echo 'COPY website /usr/share/nginx/html' >> Dockerfile
+            echo 'EXPOSE 80' >> Dockerfile
+            echo 'CMD ["nginx", "-g", "daemon off;"]' >> Dockerfile
+        fi
+        
+        if [ ! -f "docker-compose.yml" ]; then
+            echo "⚠️ Criando docker-compose.yml temporário..."
+            echo "version: '3.8'" > docker-compose.yml
+            echo "services:" >> docker-compose.yml
+            echo "  hako-website:" >> docker-compose.yml
+            echo "    build: ." >> docker-compose.yml
+            echo "    container_name: hako-website" >> docker-compose.yml
+            echo "    ports:" >> docker-compose.yml
+            echo "      - \"3005:80\"" >> docker-compose.yml
+            echo "    restart: always" >> docker-compose.yml
+        fi
+
+        # Deploy
+        echo "🛑 Parando containers antigos..."
+        sudo docker-compose down || true
+        
+        echo "🐳 Reconstruindo e iniciando..."
+        sudo docker-compose up -d --build
+        
+        # Verificação
+        echo "🔍 Verificando status..."
+        sleep 5
+        if sudo docker ps | grep -q hako-website; then
+            echo "✅ Hako rodando na porta 3005!"
+        else
+            echo "❌ Falha ao iniciar Hako."
+            sudo docker logs hako-website
+            exit 1
+        fi
+        
+        # Limpeza
+        sudo docker system prune -f
+        EOF
+        
+        # Executar remotamente
+        scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no deploy_script.sh "$OCI_USER@$OCI_HOST:/tmp/"
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no "$OCI_USER@$OCI_HOST" "chmod +x /tmp/deploy_script.sh && /tmp/deploy_script.sh"
