@@ -33,3 +33,4 @@ cloudflared.exe
 
 # Editor swaps
 *.swp
+.cursor/
