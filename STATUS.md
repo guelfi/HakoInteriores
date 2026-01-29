@@ -1,11 +1,16 @@
 # 📊 HAKO - Status do Projeto
 
-**Última atualização:** 14/01/2026
+**Última atualização:** 29/01/2026
 
 ## ✅ STATUS ATUAL
 
-**Desenvolvimento:** ⚪ Aguardando migração  
-**Produção:** 🟢 Online e funcional
+**Desenvolvimento:** 🟢 Funcional (via start-dev.sh centralizado)  
+**Produção:** 🟢 Online e funcional  
+**Repositório:** 🟢 Sincronizado (local ↔ GitHub)  
+**Último commit:** 52f4395 (16/01/2026)
+
+### 🐳 Containers OCI
+- hako-website: ✅ Up 3 weeks
 
 ## 🎯 FASE ATUAL
 
@@ -20,10 +25,11 @@
 5. [ ] Criar README-DEPLOY.md
 6. [ ] Configurar GitHub Actions (CI/CD)
 7. [ ] Testar deploy isolado
-8. [ ] Validar em produção
 
 ## 📝 OBSERVAÇÕES
 
-- Projeto mais simples (apenas estáticos)
-- Ideal para validar processo de migração
-- Sem dependências de backend ou banco de dados
+- Website estático (HTML/CSS/JS)
+- Sem backend/banco de dados
+- Branch master (não main)
+- Projeto simples e estável
+- Usa http-server para desenvolvimento
