@@ -28,12 +28,13 @@ npx http-server -p 3005
 
 ### URL Local
 - http://localhost:3005/
-- http://localhost/hako/ (via Nginx)
+- http://localhost/ (via Nginx)
 
 ## Ambiente Produção (OCI)
 
 ### URL
-- http://129.153.86.168/hako/
+- https://hakointeriores.com.br/ (Novo)
+- http://129.153.86.168/ (IP Legado)
 
 ### Deploy
 ```bash

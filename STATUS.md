@@ -6,11 +6,13 @@
 ## Ambiente
 | Ambiente | Status | URL |
 |----------|--------|-----|
-| Local | ✅ Funcional | http://localhost/hako/ |
-| Produção (OCI) | ✅ Funcional | http://129.153.86.168/hako/ |
+| Local | ✅ Funcional | http://localhost/ |
+| Produção (OCI) | ⏳ Migrando | https://hakointeriores.com.br/ |
 
 ## Última Atualização
-- Deploy realizado em produção
+- Início da migração para o domínio próprio `hakointeriores.com.br`
+- Restauração e correção do workflow de CI/CD
+- Remoção do prefixo `/hako/` para servir na raiz do domínio
 
 ## Tarefas Pendentes
 - Nenhuma tarefa pendente no momento
