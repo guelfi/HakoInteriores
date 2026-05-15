@@ -139,12 +139,19 @@ jobs:
             ./ "$SSH_USER@$SSH_HOST:$RDIR/"
         if: steps.check_ssh.outputs.has_ssh == 'true'
 
-      - name: Reiniciar container Hako (Atualização de Cache)
+      - name: Reiniciar container Hako (Forçar atualização)
         env:
           SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
           CONTAINER_NAME: ${{ secrets.CONTAINER_NAME || 'hako-website' }}
         run: |
-          ssh "$SSH_USER@$SSH_HOST" "sudo docker restart $CONTAINER_NAME || echo 'Container não encontrado, ignorando restart.'"
+          ssh "$SSH_USER@$SSH_HOST" "
+            echo 'Verificando container: $CONTAINER_NAME'
+            sudo docker ps -a | grep $CONTAINER_NAME
+            echo 'Parando e iniciando container...'
+            sudo docker stop $CONTAINER_NAME || true
+            sudo docker start $CONTAINER_NAME
+            echo 'Status final:'
+            sudo docker ps | grep $CONTAINER_NAME
+          "
         if: steps.check_ssh.outputs.has_ssh == 'true'
-        continue-on-error: true
