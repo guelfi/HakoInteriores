@@ -69,20 +69,24 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
           PROJECT_ROOT: "/var/www/Hako"
+          CONTAINER_NAME: "hako-website"
         run: |
           ssh "$SSH_USER@$SSH_HOST" "
             cd $PROJECT_ROOT
-            # Detectar se o comando é 'docker compose' ou 'docker-compose'
+            
+            # Detectar comando docker compose
             if sudo docker compose version > /dev/null 2>&1; then
               DOCKER_CMD='sudo docker compose'
             else
               DOCKER_CMD='sudo docker-compose'
             fi
             
-            echo \"Usando comando: \$DOCKER_CMD\"
+            echo \"Limpando conflitos de container para: $CONTAINER_NAME\"
+            sudo docker stop $CONTAINER_NAME || true
+            sudo docker rm -f $CONTAINER_NAME || true
             
-            # Tentar build e up
-            \$DOCKER_CMD build hako-website
-            \$DOCKER_CMD up -d hako-website
+            echo \"Iniciando Build e Deploy...\"
+            \$DOCKER_CMD build $CONTAINER_NAME
+            \$DOCKER_CMD up -d --force-recreate $CONTAINER_NAME
           "
         if: steps.check_ssh.outputs.has_ssh == 'true'
