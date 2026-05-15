@@ -34,7 +34,7 @@ npx http-server -p 3005
 - **Produção**: [https://www.hakointeriores.com.br](https://www.hakointeriores.com.br)
 - **Local**: [http://localhost/](http://localhost/)
 - **Infra**: OCI (Docker + Nginx Proxy)
-- **SSL**: Cloudflare
+- **SSL**: Cloudflare (Certificado Próprio)
 
 ### Deploy
 ```bash
