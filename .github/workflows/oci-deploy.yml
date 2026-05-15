@@ -157,11 +157,13 @@ jobs:
           echo "Aguardando serviço estabilizar..."
           sleep 5
 
-          # Teste local via SSH (dentro do servidor)
+          # Teste local via docker exec (DNS do Docker só funciona dentro de containers)
           ssh "$SSH_USER@$SSH_HOST" 'bash -s' << 'EOF'
             set -e
+            CONTAINER_NAME="hako-website"
+
             for i in 1 2 3; do
-              code=$(curl --max-time 5 -s -o /dev/null -w "%{http_code}" http://hako-website:80/ 2>/dev/null || echo "000")
+              code=$(sudo docker exec $CONTAINER_NAME curl --max-time 5 -s -o /dev/null -w "%{http_code}" http://localhost/ 2>/dev/null || echo "000")
               echo "Teste local (tentativa $i): HTTP $code"
               if [ "$code" = "200" ]; then
                 echo "Health check local OK"
@@ -169,8 +171,20 @@ jobs:
               fi
               sleep 3
             done
+
+            echo "curl não disponível no container, testando via docker inspect..."
+            CONTAINER_IP=$(sudo docker inspect $CONTAINER_NAME -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' | head -c 15)
+            if [ -n "$CONTAINER_IP" ]; then
+              code=$(curl --max-time 5 -s -o /dev/null -w "%{http_code}" "http://$CONTAINER_IP:80/" 2>/dev/null || echo "000")
+              echo "Teste via IP ($CONTAINER_IP): HTTP $code"
+              if [ "$code" = "200" ]; then
+                echo "Health check via IP OK"
+                exit 0
+              fi
+            fi
+
             echo "AVISO: Health check local falhou"
-            sudo docker logs hako-website --tail 20
+            sudo docker logs $CONTAINER_NAME --tail 20
             exit 1
           EOF
         if: steps.check_ssh.outputs.has_ssh == 'true'
