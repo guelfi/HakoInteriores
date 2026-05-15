@@ -173,7 +173,7 @@ jobs:
             done
 
             echo "curl não disponível no container, testando via docker inspect..."
-            CONTAINER_IP=$(sudo docker inspect $CONTAINER_NAME -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' | head -c 15)
+            CONTAINER_IP=$(sudo docker inspect $CONTAINER_NAME -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' | awk '{print $1}')
             if [ -n "$CONTAINER_IP" ]; then
               code=$(curl --max-time 5 -s -o /dev/null -w "%{http_code}" "http://$CONTAINER_IP:80/" 2>/dev/null || echo "000")
               echo "Teste via IP ($CONTAINER_IP): HTTP $code"
