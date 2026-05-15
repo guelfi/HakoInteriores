@@ -68,40 +68,42 @@ jobs:
         env:
           SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
-          PROJECT_ROOT: "/var/www/Hako"
-          CONTAINER_NAME: "hako-website"
-          PROXY_CONTAINER: "nginx-proxy"
         run: |
-          ssh "$SSH_USER@$SSH_HOST" "
-            cd $PROJECT_ROOT
+          ssh "$SSH_USER@$SSH_HOST" 'bash -s' << 'EOF'
+            cd /var/www/Hako
             
+            # Detectar comando docker compose
             if sudo docker compose version > /dev/null 2>&1; then
-              DOCKER_CMD='sudo docker compose'
+              DOCKER_CMD="sudo docker compose"
             else
-              DOCKER_CMD='sudo docker-compose'
+              DOCKER_CMD="sudo docker-compose"
             fi
             
-            echo \"Limpando conflitos para: $CONTAINER_NAME\"
+            CONTAINER_NAME="hako-website"
+            PROXY_CONTAINER="nginx-proxy"
+            
+            echo "Limpando container antigo..."
             sudo docker stop $CONTAINER_NAME || true
             sudo docker rm -f $CONTAINER_NAME || true
             
-            echo \"Iniciando Build e Up...\"
-            \$DOCKER_CMD build $CONTAINER_NAME
-            \$DOCKER_CMD up -d --force-recreate $CONTAINER_NAME
+            echo "Iniciando Build e Up..."
+            $DOCKER_CMD build $CONTAINER_NAME
+            $DOCKER_CMD up -d --force-recreate $CONTAINER_NAME
             
-            echo \"Conectando à rede do Proxy (\$PROXY_CONTAINER)...\"
-            # Tenta descobrir a rede do proxy e conectar o hako nela
-            PROXY_NET=\$(sudo docker inspect \$PROXY_CONTAINER --format '{{range \$net,\$conf := .NetworkSettings.Networks}}{{\$net}}{{end}}' | head -n 1)
-            if [ ! -z \"\$PROXY_NET\" ]; then
-              echo \"Rede encontrada: \$PROXY_NET. Conectando...\"
-              sudo docker network connect \$PROXY_NET $CONTAINER_NAME || true
+            echo "Conectando à rede do Proxy..."
+            # Tenta pegar a rede do container nginx-proxy
+            PROXY_NET=$(sudo docker inspect $PROXY_CONTAINER -f "{{range \$net,\$v := .NetworkSettings.Networks}}{{\$net}}{{end}}" | head -n 1)
+            
+            if [ ! -z "$PROXY_NET" ]; then
+              echo "Rede detectada: $PROXY_NET. Conectando..."
+              sudo docker network connect $PROXY_NET $CONTAINER_NAME || true
             else
-              echo \"ERRO: Rede do proxy não encontrada. Tentando rede 'proxy' padrão...\"
+              echo "Aviso: Container $PROXY_CONTAINER não encontrado. Tentando redes comuns..."
               sudo docker network connect proxy $CONTAINER_NAME || true
+              sudo docker network connect nginx-proxy $CONTAINER_NAME || true
             fi
             
-            echo \"--- DIAGNÓSTICO FINAL ---\"
+            echo "Verificação de Status:"
             sudo docker ps | grep $CONTAINER_NAME
-            sudo docker inspect $CONTAINER_NAME --format 'Redes: {{range .NetworkSettings.Networks}}{{.IPAddress}} ({{.NetworkID}}) {{end}}'
-          "
+          EOF
         if: steps.check_ssh.outputs.has_ssh == 'true'
