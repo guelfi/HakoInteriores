@@ -30,11 +30,11 @@ npx http-server -p 3005
 - http://localhost:3005/
 - http://localhost/ (via Nginx)
 
-## Ambiente Produção (OCI)
-
-### URL
-- https://hakointeriores.com.br/ (Novo)
-- http://129.153.86.168/ (IP Legado)
+## Ambiente
+- **Produção**: [https://www.hakointeriores.com.br](https://www.hakointeriores.com.br)
+- **Local**: [http://localhost/](http://localhost/)
+- **Infra**: OCI (Docker + Nginx Proxy)
+- **SSL**: Cloudflare
 
 ### Deploy
 ```bash

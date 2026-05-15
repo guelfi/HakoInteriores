@@ -7,7 +7,14 @@
 | Ambiente | Status | URL |
 |----------|--------|-----|
 | Local | ✅ Funcional | http://localhost/ |
-| Produção (OCI) | ⏳ Migrando | https://hakointeriores.com.br/ |
+| Produção (OCI) | ✅ Concluído (15/05/2026) | https://hakointeriores.com.br/ |
+
+## Detalhes do Deployment
+- **Ambiente de Produção**: OCI (Oracle Cloud Infrastructure) - Docker Container
+- **URL**: [https://www.hakointeriores.com.br](https://www.hakointeriores.com.br)
+- **CI/CD**: Operacional via GitHub Actions (OCI Deploy)
+- **Arquitetura**: Site estático servido por container Docker `hako-website` atrás de um Proxy Reverso Nginx centralizado.
+- **SSL**: Gerenciado pela Cloudflare (Proxy On). Certificado de origem compartilhado.
 
 ## Última Atualização
 - Início da migração para o domínio próprio `hakointeriores.com.br`
