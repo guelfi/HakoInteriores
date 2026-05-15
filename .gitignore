@@ -24,6 +24,8 @@ coverage/
 *.pem
 *.key
 *.crt
+hako-origin.crt
+hako-origin.key
 
 # Binaries and large files
 cloudflared.exe
