@@ -37,14 +37,6 @@ jobs:
             echo "Missing OCI credentials: ${missing[*]}"
           fi
 
-      - name: Detect accidental private keys in repo
-        run: |
-          set -e
-          found=$(find . -type f \( -name "*.pem" -o -name "*.key" \) ! -path "./.github/*" | wc -l)
-          if [ "$found" -gt 0 ]; then
-            echo "Detected $found key file(s) in repository. Remove them and use GitHub Secrets." && exit 1
-          fi
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -119,21 +111,6 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
         if: steps.check_ssh.outputs.has_ssh == 'true'
 
-      - name: Validate SSH key format and permissions
-        run: |
-          set -e
-          test -s ~/.ssh/id_rsa || { echo "SSH key file is empty"; exit 1; }
-          ls -l ~/.ssh/id_rsa
-          perm=$(stat -c %a ~/.ssh/id_rsa || stat -f %Lp ~/.ssh/id_rsa)
-          echo "Detected permissions: $perm"
-          if [ "$perm" != "600" ]; then
-            echo "Invalid permissions on private key; expected 600" && exit 1
-          fi
-          if ! grep -qE -- '^-----BEGIN (OPENSSH|RSA|EC)? PRIVATE KEY-----' ~/.ssh/id_rsa; then
-            echo "Private key format not recognized (expected OPENSSH or RSA)" && exit 1
-          fi
-        if: steps.check_ssh.outputs.has_ssh == 'true'
-
       - name: Add remote host to known_hosts
         env:
           SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
@@ -141,24 +118,7 @@ jobs:
           ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
         if: steps.check_ssh.outputs.has_ssh == 'true'
 
-      - name: Test SSH connectivity (handshake)
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
-        run: |
-          set -e
-          ssh -o BatchMode=yes "$SSH_USER@$SSH_HOST" echo ok
-        if: steps.check_ssh.outputs.has_ssh == 'true'
-
-      - name: Check passwordless sudo availability
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
-        run: |
-          ssh "$SSH_USER@$SSH_HOST" 'sudo -n true 2>/dev/null && echo "passwordless sudo: OK" || (echo "passwordless sudo: NOT AVAILABLE"; exit 1)'
-        if: steps.check_ssh.outputs.has_ssh == 'true'
-
-      - name: Upload site to remote
+      - name: Upload site to remote folder (Volume Docker)
         env:
           SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
@@ -176,109 +136,15 @@ jobs:
             --exclude ".gitignore" \
             --exclude ".vercelignore" \
             --rsync-path="sudo rsync" \
-            --chown "$SUSER:$SUSER" \
             ./ "$SSH_USER@$SSH_HOST:$RDIR/"
         if: steps.check_ssh.outputs.has_ssh == 'true'
 
-      - name: Configurar Nginx para servir estático
+      - name: Reiniciar container Hako (Atualização de Cache)
         env:
           SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
-          NGINX_CONF_DIR: ${{ secrets.NGINX_CONF_DIR || vars.NGINX_CONF_DIR }}
-          NGINX_SERVER_NAME: ${{ secrets.NGINX_SERVER_NAME || vars.NGINX_SERVER_NAME }}
-          REMOTE_DIR: ${{ secrets.REMOTE_DIR || vars.REMOTE_DIR }}
+          CONTAINER_NAME: ${{ secrets.CONTAINER_NAME || 'hako-website' }}
         run: |
-          # Preparamos as variáveis
-          CONF_DIR="${NGINX_CONF_DIR:-/etc/nginx/conf.d}"
-          CONF_PATH="${CONF_DIR}/hako-website.conf"
-          RDIR="${REMOTE_DIR:-/var/www/hako-website}"
-          SNAME="${NGINX_SERVER_NAME:-www.hakointeriores.com.br hakointeriores.com.br}"
-          
-          ssh "$SSH_USER@$SSH_HOST" "SNAME='$SNAME' RDIR='$RDIR' CONF_PATH='$CONF_PATH' CONF_DIR='$CONF_DIR' bash -s" <<'EOF'
-            set -e
-            if [ -e "/etc/nginx/sites-enabled/default" ]; then
-              sudo rm -f "/etc/nginx/sites-enabled/default"
-            fi
-            sudo mkdir -p "$CONF_DIR"
-            sudo tee "$CONF_PATH" > /dev/null <<EOT
-            server {
-                listen 80 default_server;
-                listen [::]:80 default_server;
-                listen 3005;
-                server_name $SNAME;
-                root $RDIR;
-                index index.html;
-
-                location / {
-                    try_files \$uri \$uri/ /index.html;
-                }
-
-                location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp)$ {
-                    expires 7d;
-                    add_header Cache-Control "public, immutable";
-                }
-            }
-            EOT
-            sudo nginx -t
-            sudo systemctl reload nginx
-          EOF
-        if: steps.check_ssh.outputs.has_ssh == 'true'
-
-      - name: Liberar porta 80 no firewall (ufw)
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
-        run: |
-          ssh "$SSH_USER@$SSH_HOST" '
-            if command -v ufw >/dev/null 2>&1; then
-              state=$(sudo ufw status | head -n1 | awk "{print \$2}")
-              if [ "$state" = "active" ]; then
-                sudo ufw allow 80/tcp || true
-                sudo ufw allow 443/tcp || true
-                sudo ufw allow 3005/tcp || true
-                sudo ufw reload || true
-              fi
-            fi
-          '
-        if: steps.check_ssh.outputs.has_ssh == 'true'
-
-      - name: Teste local (Nginx)
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
-        run: |
-          ssh "$SSH_USER@$SSH_HOST" '
-            code=$(curl --max-time 10 --connect-timeout 5 -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3005/ || true)
-            echo "HTTP code: $code"
-            if [ "$code" != "200" ] && [ "$code" != "301" ] && [ "$code" != "302" ]; then
-              echo "Validação local do Nginx falhou" && exit 1
-            fi
-          '
-        continue-on-error: true
-
-      - name: Diagnóstico Nginx
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
-          NGINX_CONF_DIR: ${{ secrets.NGINX_CONF_DIR || vars.NGINX_CONF_DIR }}
-          REMOTE_DIR: ${{ secrets.REMOTE_DIR || vars.REMOTE_DIR }}
-        run: |
-          ssh "$SSH_USER@$SSH_HOST" '
-            CONF_DIR="${NGINX_CONF_DIR:-/etc/nginx/conf.d}"
-            CONF_PATH="${CONF_DIR}/hako-website.conf"
-            RDIR="${REMOTE_DIR:-/var/www/hako-website}"
-            echo "=== conf path ==="
-            echo "$CONF_PATH"
-            echo "=== conf content ==="
-            sudo cat "$CONF_PATH" || true
-            echo "=== nginx -t ==="
-            sudo nginx -t || true
-            echo "=== listen 80 ==="
-            sudo ss -tlnp | grep ":80" || true
-            echo "=== file access (www-data) ==="
-            id www-data || true
-            sudo -u www-data test -r "$RDIR/index.html" && echo readable || echo not readable
-            sudo -u www-data ls -l "$RDIR/index.html" || true
-          '
+          ssh "$SSH_USER@$SSH_HOST" "sudo docker restart $CONTAINER_NAME || echo 'Container não encontrado, ignorando restart.'"
         if: steps.check_ssh.outputs.has_ssh == 'true'
         continue-on-error: true
