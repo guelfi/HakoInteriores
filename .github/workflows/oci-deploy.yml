@@ -30,6 +30,8 @@ jobs:
             echo "has_ssh=true" >> $GITHUB_OUTPUT
           else
             echo "has_ssh=false" >> $GITHUB_OUTPUT
+            echo "::error::Missing SSH secrets: ${missing[*]}"
+            exit 1
           fi
 
       - name: Setup SSH
@@ -64,46 +66,128 @@ jobs:
             ./ "$SSH_USER@$SSH_HOST:$RDIR/"
         if: steps.check_ssh.outputs.has_ssh == 'true'
 
+      - name: Deploy SSL Certificate (if configured)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+          HAKO_SSL_CERT: ${{ secrets.HAKO_SSL_CERT }}
+          HAKO_SSL_KEY: ${{ secrets.HAKO_SSL_KEY }}
+        run: |
+          if [ -z "$HAKO_SSL_CERT" ] || [ -z "$HAKO_SSL_KEY" ]; then
+            echo "SSL secrets not configured, skipping certificate deployment"
+            exit 0
+          fi
+
+          ssh "$SSH_USER@$SSH_HOST" 'bash -s' << 'SSLEOF'
+            set -e
+            SSL_DIR="/etc/ssl/hako"
+            sudo mkdir -p "$SSL_DIR"
+          SSLEOF
+
+          echo "$HAKO_SSL_CERT" | ssh "$SSH_USER@$SSH_HOST" "sudo tee /etc/ssl/hako/origin.crt > /dev/null"
+          echo "$HAKO_SSL_KEY" | ssh "$SSH_USER@$SSH_HOST" "sudo tee /etc/ssl/hako/origin.key > /dev/null"
+          ssh "$SSH_USER@$SSH_HOST" "sudo chmod 600 /etc/ssl/hako/origin.key && sudo chmod 644 /etc/ssl/hako/origin.crt"
+          echo "SSL certificate deployed to /etc/ssl/hako/"
+        if: steps.check_ssh.outputs.has_ssh == 'true'
+
       - name: Rebuild and Restart Hako Containers
         env:
           SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
         run: |
           ssh "$SSH_USER@$SSH_HOST" 'bash -s' << 'EOF'
+            set -e
             cd /var/www/Hako
-            
+
             # Detectar comando docker compose
             if sudo docker compose version > /dev/null 2>&1; then
               DOCKER_CMD="sudo docker compose"
             else
               DOCKER_CMD="sudo docker-compose"
             fi
-            
+
             CONTAINER_NAME="hako-website"
             PROXY_CONTAINER="nginx-proxy"
-            
-            echo "Limpando container antigo..."
-            sudo docker stop $CONTAINER_NAME || true
-            sudo docker rm -f $CONTAINER_NAME || true
-            
-            echo "Iniciando Build e Up..."
-            $DOCKER_CMD build $CONTAINER_NAME
-            $DOCKER_CMD up -d --force-recreate $CONTAINER_NAME
-            
-            echo "Conectando à rede do Proxy..."
-            # Tenta pegar a rede do container nginx-proxy
-            PROXY_NET=$(sudo docker inspect $PROXY_CONTAINER -f "{{range \$net,\$v := .NetworkSettings.Networks}}{{\$net}}{{end}}" | head -n 1)
-            
-            if [ ! -z "$PROXY_NET" ]; then
-              echo "Rede detectada: $PROXY_NET. Conectando..."
-              sudo docker network connect $PROXY_NET $CONTAINER_NAME || true
-            else
-              echo "Aviso: Container $PROXY_CONTAINER não encontrado. Tentando redes comuns..."
-              sudo docker network connect proxy $CONTAINER_NAME || true
-              sudo docker network connect nginx-proxy $CONTAINER_NAME || true
+
+            # Build e recria em um único passo (sem downtime)
+            echo "Build e restart do container..."
+            $DOCKER_CMD up -d --build --force-recreate $CONTAINER_NAME
+
+            # Aguarda container iniciar
+            echo "Aguardando container iniciar..."
+            sleep 3
+
+            # Verifica se está rodando
+            if ! sudo docker ps --filter "name=$CONTAINER_NAME" --filter "status=running" -q | grep -q .; then
+              echo "ERRO: Container $CONTAINER_NAME não está rodando!"
+              sudo docker logs $CONTAINER_NAME --tail 30
+              exit 1
             fi
-            
-            echo "Verificação de Status:"
-            sudo docker ps | grep $CONTAINER_NAME
+
+            # Conectar à rede do proxy (se necessário)
+            PROXY_NET=$(sudo docker inspect $PROXY_CONTAINER -f '{{range $net,$v := .NetworkSettings.Networks}}{{$net}} {{end}}' 2>/dev/null | awk '{print $1}')
+
+            if [ -n "$PROXY_NET" ]; then
+              # Verifica se já está conectado
+              CURRENT_NETS=$(sudo docker inspect $CONTAINER_NAME -f '{{range $net,$v := .NetworkSettings.Networks}}{{$net}} {{end}}' 2>/dev/null)
+              if echo "$CURRENT_NETS" | grep -q "$PROXY_NET"; then
+                echo "Container já conectado à rede $PROXY_NET"
+              else
+                echo "Conectando à rede $PROXY_NET..."
+                sudo docker network connect "$PROXY_NET" "$CONTAINER_NAME"
+              fi
+            else
+              echo "ERRO: Container $PROXY_CONTAINER não encontrado ou sem rede!"
+              echo "Tentando redes conhecidas..."
+              sudo docker network connect proxy "$CONTAINER_NAME" 2>/dev/null || \
+              sudo docker network connect nginx-proxy "$CONTAINER_NAME" 2>/dev/null || \
+              { echo "FALHA: Não foi possível conectar à rede do proxy"; exit 1; }
+            fi
+
+            echo "Deploy concluído. Status:"
+            sudo docker ps --filter "name=$CONTAINER_NAME" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
           EOF
+        if: steps.check_ssh.outputs.has_ssh == 'true'
+
+      - name: Health Check
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+        run: |
+          echo "Aguardando serviço estabilizar..."
+          sleep 5
+
+          # Teste local via SSH (dentro do servidor)
+          ssh "$SSH_USER@$SSH_HOST" 'bash -s' << 'EOF'
+            set -e
+            for i in 1 2 3; do
+              code=$(curl --max-time 5 -s -o /dev/null -w "%{http_code}" http://hako-website:80/ 2>/dev/null || echo "000")
+              echo "Teste local (tentativa $i): HTTP $code"
+              if [ "$code" = "200" ]; then
+                echo "Health check local OK"
+                exit 0
+              fi
+              sleep 3
+            done
+            echo "AVISO: Health check local falhou"
+            sudo docker logs hako-website --tail 20
+            exit 1
+          EOF
+        if: steps.check_ssh.outputs.has_ssh == 'true'
+
+      - name: External Verification
+        run: |
+          echo "Verificando acesso externo..."
+          sleep 5
+          for i in 1 2 3; do
+            code=$(curl --max-time 10 -s -o /dev/null -w "%{http_code}" https://www.hakointeriores.com.br/ || echo "000")
+            echo "Teste externo (tentativa $i): HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "Site acessível externamente!"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::warning::Site não retornou HTTP 200 externamente. Verifique Cloudflare/DNS."
+        continue-on-error: true
         if: steps.check_ssh.outputs.has_ssh == 'true'
