@@ -70,6 +70,7 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
           PROJECT_ROOT: "/var/www/Hako"
           CONTAINER_NAME: "hako-website"
+          PROXY_CONTAINER: "nginx-proxy"
         run: |
           ssh "$SSH_USER@$SSH_HOST" "
             cd $PROJECT_ROOT
@@ -88,12 +89,19 @@ jobs:
             \$DOCKER_CMD build $CONTAINER_NAME
             \$DOCKER_CMD up -d --force-recreate $CONTAINER_NAME
             
-            echo \"--- DIAGNÓSTICO PÓS-DEPLOY ---\"
-            echo \"Status do Container:\"
+            echo \"Conectando à rede do Proxy (\$PROXY_CONTAINER)...\"
+            # Tenta descobrir a rede do proxy e conectar o hako nela
+            PROXY_NET=\$(sudo docker inspect \$PROXY_CONTAINER --format '{{range \$net,\$conf := .NetworkSettings.Networks}}{{\$net}}{{end}}' | head -n 1)
+            if [ ! -z \"\$PROXY_NET\" ]; then
+              echo \"Rede encontrada: \$PROXY_NET. Conectando...\"
+              sudo docker network connect \$PROXY_NET $CONTAINER_NAME || true
+            else
+              echo \"ERRO: Rede do proxy não encontrada. Tentando rede 'proxy' padrão...\"
+              sudo docker network connect proxy $CONTAINER_NAME || true
+            fi
+            
+            echo \"--- DIAGNÓSTICO FINAL ---\"
             sudo docker ps | grep $CONTAINER_NAME
-            echo \"Logs do Container (últimas 20 linhas):\"
-            sudo docker logs --tail 20 $CONTAINER_NAME
-            echo \"Redes conectadas:\"
-            sudo docker inspect $CONTAINER_NAME --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} ({{.NetworkID}}){{end}}'
+            sudo docker inspect $CONTAINER_NAME --format 'Redes: {{range .NetworkSettings.Networks}}{{.IPAddress}} ({{.NetworkID}}) {{end}}'
           "
         if: steps.check_ssh.outputs.has_ssh == 'true'
