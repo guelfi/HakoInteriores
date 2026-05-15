@@ -264,23 +264,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const anchors = Array.from(document.querySelectorAll('a[href^="#"]'));
     const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-    const computeBaseGap = () => {
-        const hdr = header ? header.offsetHeight : 0;
-        if (!hero) return 0;
-        const topAbs = hero.getBoundingClientRect().top + window.pageYOffset;
-        const gap = topAbs - hdr;
-        return Math.max(0, Math.round(gap));
-    };
-    let baseGap = computeBaseGap();
-    window.addEventListener('resize', () => { baseGap = computeBaseGap(); });
-    window.addEventListener('orientationchange', () => { baseGap = computeBaseGap(); });
+    
     const smoothTo = (target, duration, onDone) => {
         if (!target) return;
         if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { target.scrollIntoView(); return; }
         const start = window.pageYOffset;
         const rect = target.getBoundingClientRect();
         const headerOffset = header ? header.offsetHeight : 0;
-        const end = Math.max(0, rect.top + start - headerOffset - (baseGap || 0));
+        const end = Math.max(0, rect.top + start - headerOffset);
         const dist = Math.abs(end - start);
         const dur = Math.max(500, Math.min(800, duration || (dist < 300 ? 650 : 800)));
         let cancelled = false;
@@ -306,14 +297,14 @@ document.addEventListener('DOMContentLoaded', () => {
         a.addEventListener('click', e => {
             const href = a.getAttribute('href');
             if (!href || href === '#') return;
-            const id = href.slice(1);
-            const target = document.getElementById(id);
-            if (target) {
-                e.preventDefault();
-                smoothTo(target);
-                const wasActive = navLinks.classList.contains('active');
-                if (wasActive) { navLinks.classList.remove('active'); setExpanded(); toggleBlur(false); }
+            
+            const wasActive = navLinks.classList.contains('active');
+            if (wasActive) { 
+                navLinks.classList.remove('active'); 
+                setExpanded(); 
+                toggleBlur(false); 
             }
+            // Deixamos o navegador lidar com o scroll nativo (smooth scroll via CSS)
         });
     });
 
