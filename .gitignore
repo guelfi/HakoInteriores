@@ -26,6 +26,7 @@ coverage/
 *.crt
 hako-origin.crt
 hako-origin.key
+ssh-key-2025-08-28.pem
 
 # Binaries and large files
 cloudflared.exe
