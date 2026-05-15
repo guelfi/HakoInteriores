@@ -188,36 +188,42 @@ jobs:
           NGINX_SERVER_NAME: ${{ secrets.NGINX_SERVER_NAME || vars.NGINX_SERVER_NAME }}
           REMOTE_DIR: ${{ secrets.REMOTE_DIR || vars.REMOTE_DIR }}
         run: |
-          ssh "$SSH_USER@$SSH_HOST" '
+          # Preparamos as variáveis para passar ao SSH com aspas duplas para permitir expansão local
+          CONF_DIR="${NGINX_CONF_DIR:-/etc/nginx/conf.d}"
+          CONF_PATH="${CONF_DIR}/hako-website.conf"
+          RDIR="${REMOTE_DIR:-/var/www/hako-website}"
+          # Priorizamos o domínio www solicitado pelo usuário
+          SNAME="${NGINX_SERVER_NAME:-www.hakointeriores.com.br hakointeriores.com.br}"
+          
+          ssh "$SSH_USER@$SSH_HOST" "SNAME='$SNAME' RDIR='$RDIR' CONF_PATH='$CONF_PATH' CONF_DIR='$CONF_DIR' bash -s" <<'EOF'
             set -e
-            CONF_DIR="${NGINX_CONF_DIR:-/etc/nginx/conf.d}"
-            CONF_PATH="${CONF_DIR}/hako-website.conf"
-            RDIR="${REMOTE_DIR:-/var/www/hako-website}"
-            SNAME="${NGINX_SERVER_NAME:-_}"
-            # Disable Ubuntu default site to avoid duplicate default_server
+            # Desabilita o site padrão do Ubuntu se existir
             if [ -e "/etc/nginx/sites-enabled/default" ]; then
               sudo rm -f "/etc/nginx/sites-enabled/default"
             fi
             sudo mkdir -p "$CONF_DIR"
-            sudo tee "$CONF_PATH" > /dev/null <<EOF
-            server {
-              listen 80 default_server;
-              listen 3005;
-              server_name ${SNAME};
-              root ${RDIR};
-              index index.html;
-              location / {
-                try_files \$uri \$uri/ /index.html;
-              }
-              location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp)$ {
-                expires 7d;
-                add_header Cache-Control "public, immutable";
-              }
-            }
-          EOF
+            sudo tee "$CONF_PATH" > /dev/null <<EOT
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    listen 3005;
+    server_name $SNAME;
+    root $RDIR;
+    index index.html;
+
+    location / {
+        try_files \$uri \$uri/ /index.html;
+    }
+
+    location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|webp)$ {
+        expires 7d;
+        add_header Cache-Control "public, immutable";
+    }
+}
+EOT
             sudo nginx -t
             sudo systemctl reload nginx
-          '
+EOF
         if: steps.check_ssh.outputs.has_ssh == 'true'
 
       - name: Liberar porta 80 no firewall (ufw)
@@ -230,6 +236,7 @@ jobs:
               state=$(sudo ufw status | head -n1 | awk "{print \$2}")
               if [ "$state" = "active" ]; then
                 sudo ufw allow 80/tcp || true
+                sudo ufw allow 443/tcp || true
                 sudo ufw allow 3005/tcp || true
                 sudo ufw reload || true
               fi
