@@ -16,11 +16,17 @@
     box-sizing: border-box;
 }
 
+html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 70px; /* Altura do header fixo */
+}
+
 body {
     font-family: var(--font-body);
     color: var(--text-color);
     line-height: 1.6;
     overflow-x: hidden;
+    background-color: var(--bg-light);
 }
 
 #main-content { contain: paint; }
@@ -46,7 +52,13 @@ img { width: 100%; display: block; }
     padding: 0 20px;
 }
 
-.section { padding: 80px 0; }
+.section { 
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 60px 0;
+}
 .bg-light { background-color: var(--bg-light); }
 .bg-dark { background-color: var(--bg-dark); color: var(--white); }
 
@@ -170,7 +182,7 @@ header .container {
 
 /* --- Hero --- */
 .hero {
-    height: 100vh;
+    min-height: 100vh;
     background: linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.4)), url('images/hero-background.jpg');
     background-size: cover;
     background-position: center;
@@ -374,12 +386,20 @@ header .container {
 
 /* --- Responsividade --- */
 @media (max-width: 768px) {
+    html {
+        scroll-padding-top: 60px; /* Header menor no mobile */
+    }
+
     .hero h1 { font-size: 2.5rem; }
     
+    .section {
+        padding: 40px 0;
+    }
+
     .nav-links {
-        display: none; /* Em um site real, aqui entraria o JS para abrir menu */
+        display: none; 
         position: absolute;
-        top: 70px;
+        top: 60px;
         right: 0;
         background: white;
         width: 100%;
