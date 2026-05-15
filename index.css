@@ -18,7 +18,7 @@
 
 html {
     scroll-behavior: smooth;
-    scroll-padding-top: 70px; /* Alinhado exatamente com a altura do header */
+    scroll-padding-top: 84px; /* Altura exata medida do header no Desktop */
 }
 
 body {
@@ -57,7 +57,7 @@ img { width: 100%; display: block; }
     display: flex;
     flex-direction: column;
     justify-content: flex-start; /* Alinhado ao topo */
-    padding: 60px 0; /* 60px de distância do header quando scrollado */
+    padding: 30px 0 60px 0; /* Aproxima o título do menu (30px de respiro) */
 }
 .bg-light { background-color: var(--bg-light); }
 .bg-dark { background-color: var(--bg-dark); color: var(--white); }
@@ -387,13 +387,13 @@ header .container {
 /* --- Responsividade --- */
 @media (max-width: 768px) {
     html {
-        scroll-padding-top: 70px;
+        scroll-padding-top: 64px; /* Altura exata medida do header no Mobile */
     }
 
     .hero h1 { font-size: 2.5rem; }
     
     .section {
-        padding: 90px 0 40px 0;
+        padding: 20px 0 40px 0; /* Menos recuo no mobile para aproveitar a tela */
     }
 
     .nav-links {
