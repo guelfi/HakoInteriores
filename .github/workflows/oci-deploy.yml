@@ -74,19 +74,26 @@ jobs:
           ssh "$SSH_USER@$SSH_HOST" "
             cd $PROJECT_ROOT
             
-            # Detectar comando docker compose
             if sudo docker compose version > /dev/null 2>&1; then
               DOCKER_CMD='sudo docker compose'
             else
               DOCKER_CMD='sudo docker-compose'
             fi
             
-            echo \"Limpando conflitos de container para: $CONTAINER_NAME\"
+            echo \"Limpando conflitos para: $CONTAINER_NAME\"
             sudo docker stop $CONTAINER_NAME || true
             sudo docker rm -f $CONTAINER_NAME || true
             
-            echo \"Iniciando Build e Deploy...\"
+            echo \"Iniciando Build e Up...\"
             \$DOCKER_CMD build $CONTAINER_NAME
             \$DOCKER_CMD up -d --force-recreate $CONTAINER_NAME
+            
+            echo \"--- DIAGNÓSTICO PÓS-DEPLOY ---\"
+            echo \"Status do Container:\"
+            sudo docker ps | grep $CONTAINER_NAME
+            echo \"Logs do Container (últimas 20 linhas):\"
+            sudo docker logs --tail 20 $CONTAINER_NAME
+            echo \"Redes conectadas:\"
+            sudo docker inspect $CONTAINER_NAME --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} ({{.NetworkID}}){{end}}'
           "
         if: steps.check_ssh.outputs.has_ssh == 'true'
