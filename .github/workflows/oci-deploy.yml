@@ -7,74 +7,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy-object-storage:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Check required OCI credentials
-        id: check_oci
-        env:
-          OCI_TENANCY: ${{ secrets.OCI_TENANCY_ID || vars.OCI_TENANCY_ID }}
-          OCI_USER: ${{ secrets.OCI_USER_ID || vars.OCI_USER_ID }}
-          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT || vars.OCI_FINGERPRINT }}
-          OCI_REGION: ${{ secrets.OCI_REGION || vars.OCI_REGION }}
-          OCI_KEY: ${{ secrets.OCI_PRIVATE_KEY || vars.OCI_PRIVATE_KEY }}
-          OCI_BUCKET: ${{ secrets.OCI_BUCKET || vars.OCI_BUCKET }}
-        run: |
-          missing=()
-          for v in OCI_TENANCY OCI_USER OCI_FINGERPRINT OCI_REGION OCI_KEY OCI_BUCKET; do
-            if [ -z "${!v}" ]; then
-              missing+=("$v")
-            fi
-          done
-          if [ ${#missing[@]} -eq 0 ]; then
-            echo "has_oci=true" >> $GITHUB_OUTPUT
-            echo "All OCI credentials present"
-          else
-            echo "has_oci=false" >> $GITHUB_OUTPUT
-            echo "Missing OCI credentials: ${missing[*]}"
-          fi
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-        if: steps.check_oci.outputs.has_oci == 'true'
-
-      - name: Install OCI CLI
-        run: pip install oci-cli
-        if: steps.check_oci.outputs.has_oci == 'true'
-
-      - name: Configure OCI
-        env:
-          OCI_TENANCY: ${{ secrets.OCI_TENANCY_ID || vars.OCI_TENANCY_ID }}
-          OCI_USER: ${{ secrets.OCI_USER_ID || vars.OCI_USER_ID }}
-          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT || vars.OCI_FINGERPRINT }}
-          OCI_REGION: ${{ secrets.OCI_REGION || vars.OCI_REGION }}
-          OCI_KEY: ${{ secrets.OCI_PRIVATE_KEY || vars.OCI_PRIVATE_KEY }}
-        run: |
-          mkdir -p ~/.oci
-          echo "$OCI_KEY" > ~/.oci/oci_api_key.pem
-          chmod 600 ~/.oci/oci_api_key.pem
-          cat > ~/.oci/config <<EOF
-          [DEFAULT]
-          user=${OCI_USER}
-          fingerprint=${OCI_FINGERPRINT}
-          key_file=~/.oci/oci_api_key.pem
-          tenancy=${OCI_TENANCY}
-          region=${OCI_REGION}
-          EOF
-        if: steps.check_oci.outputs.has_oci == 'true'
-
-      - name: Upload to OCI Object Storage
-        env:
-          OCI_BUCKET: ${{ secrets.OCI_BUCKET || vars.OCI_BUCKET }}
-        run: |
-          oci os object bulk-upload --bucket-name "$OCI_BUCKET" --src-dir . --overwrite true
-        if: steps.check_oci.outputs.has_oci == 'true'
-
   deploy-compute-ssh:
     runs-on: ubuntu-latest
     steps:
@@ -96,10 +28,8 @@ jobs:
           done
           if [ ${#missing[@]} -eq 0 ]; then
             echo "has_ssh=true" >> $GITHUB_OUTPUT
-            echo "All SSH secrets present"
           else
             echo "has_ssh=false" >> $GITHUB_OUTPUT
-            echo "Missing SSH secrets: ${missing[*]}"
           fi
 
       - name: Setup SSH
@@ -118,40 +48,27 @@ jobs:
           ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
         if: steps.check_ssh.outputs.has_ssh == 'true'
 
-      - name: Upload site to remote folder (Volume Docker)
+      - name: Upload site to OCI (Hako Website Directory)
         env:
           SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
-          REMOTE_DIR: ${{ secrets.REMOTE_DIR || vars.REMOTE_DIR }}
-          SERVICE_USER: ${{ secrets.SERVICE_USER || vars.SERVICE_USER }}
+          REMOTE_DIR: ${{ secrets.REMOTE_DIR || '/var/www/Hako/website' }}
         run: |
-          RDIR=${REMOTE_DIR:-/var/www/hako-website}
-          SUSER=${SERVICE_USER:-opc}
-          ssh "$SSH_USER@$SSH_HOST" sudo mkdir -p "$RDIR"
-          ssh "$SSH_USER@$SSH_HOST" sudo chown -R "$SUSER":"$SUSER" "$RDIR"
+          RDIR=${REMOTE_DIR}
+          ssh "$SSH_USER@$SSH_HOST" "sudo mkdir -p $RDIR"
           rsync -avz --delete \
             --exclude ".git" \
             --exclude ".github" \
-            --exclude ".trae" \
             --exclude ".gitignore" \
-            --exclude ".vercelignore" \
             --rsync-path="sudo rsync" \
             ./ "$SSH_USER@$SSH_HOST:$RDIR/"
         if: steps.check_ssh.outputs.has_ssh == 'true'
 
-      - name: Reiniciar container Hako (Forçar atualização)
+      - name: Rebuild and Restart Hako Containers
         env:
           SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
-          CONTAINER_NAME: ${{ secrets.CONTAINER_NAME || 'hako-website' }}
+          PROJECT_ROOT: "/var/www/Hako"
         run: |
-          ssh "$SSH_USER@$SSH_HOST" "
-            echo 'Verificando container: $CONTAINER_NAME'
-            sudo docker ps -a | grep $CONTAINER_NAME
-            echo 'Parando e iniciando container...'
-            sudo docker stop $CONTAINER_NAME || true
-            sudo docker start $CONTAINER_NAME
-            echo 'Status final:'
-            sudo docker ps | grep $CONTAINER_NAME
-          "
+          ssh "$SSH_USER@$SSH_HOST" "cd $PROJECT_ROOT && sudo docker-compose build hako-website && sudo docker-compose up -d hako-website"
         if: steps.check_ssh.outputs.has_ssh == 'true'
