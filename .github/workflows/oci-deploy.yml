@@ -108,6 +108,15 @@ jobs:
 
             CONTAINER_NAME="hako-website"
             PROXY_CONTAINER="nginx-proxy"
+            PROXY_NET="www_projetos-net"
+
+            # A rede compartilhada é explícita; a ordem das redes do proxy varia.
+            sudo docker network inspect "$PROXY_NET" > /dev/null
+            PROXY_NETS=$(sudo docker inspect "$PROXY_CONTAINER" -f '{{range $net,$v := .NetworkSettings.Networks}}{{$net}}{{println}}{{end}}')
+            if ! printf '%s\n' "$PROXY_NETS" | grep -Fxq "$PROXY_NET"; then
+              echo "ERRO: Proxy não conectado à rede $PROXY_NET"
+              exit 1
+            fi
 
             # Build e recria em um único passo (sem downtime)
             echo "Build e restart do container..."
@@ -124,24 +133,13 @@ jobs:
               exit 1
             fi
 
-            # Conectar à rede do proxy (se necessário)
-            PROXY_NET=$(sudo docker inspect $PROXY_CONTAINER -f '{{range $net,$v := .NetworkSettings.Networks}}{{$net}} {{end}}' 2>/dev/null | awk '{print $1}')
-
-            if [ -n "$PROXY_NET" ]; then
-              # Verifica se já está conectado
-              CURRENT_NETS=$(sudo docker inspect $CONTAINER_NAME -f '{{range $net,$v := .NetworkSettings.Networks}}{{$net}} {{end}}' 2>/dev/null)
-              if echo "$CURRENT_NETS" | grep -q "$PROXY_NET"; then
-                echo "Container já conectado à rede $PROXY_NET"
-              else
-                echo "Conectando à rede $PROXY_NET..."
-                sudo docker network connect "$PROXY_NET" "$CONTAINER_NAME"
-              fi
+            # Conectar somente à rede central esperada, sem redes alternativas.
+            CURRENT_NETS=$(sudo docker inspect "$CONTAINER_NAME" -f '{{range $net,$v := .NetworkSettings.Networks}}{{$net}}{{println}}{{end}}')
+            if printf '%s\n' "$CURRENT_NETS" | grep -Fxq "$PROXY_NET"; then
+              echo "Container já conectado à rede $PROXY_NET"
             else
-              echo "ERRO: Container $PROXY_CONTAINER não encontrado ou sem rede!"
-              echo "Tentando redes conhecidas..."
-              sudo docker network connect proxy "$CONTAINER_NAME" 2>/dev/null || \
-              sudo docker network connect nginx-proxy "$CONTAINER_NAME" 2>/dev/null || \
-              { echo "FALHA: Não foi possível conectar à rede do proxy"; exit 1; }
+              echo "Conectando à rede $PROXY_NET..."
+              sudo docker network connect "$PROXY_NET" "$CONTAINER_NAME"
             fi
 
             echo "Deploy concluído. Status:"
