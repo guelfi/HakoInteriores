@@ -62,6 +62,11 @@ jobs:
             --exclude ".git" \
             --exclude ".github" \
             --exclude ".gitignore" \
+            --exclude "backend/" \
+            --exclude "SPEC-BACKEND.md" \
+            --exclude "*.key" \
+            --exclude "*.crt" \
+            --exclude "gitactions.err" \
             --rsync-path="sudo rsync" \
             ./ "$SSH_USER@$SSH_HOST:$RDIR/"
         if: steps.check_ssh.outputs.has_ssh == 'true'

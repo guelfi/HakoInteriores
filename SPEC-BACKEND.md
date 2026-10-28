@@ -23,14 +23,31 @@ Spec consolidada do brainstorm (out/2026). Backend interno da Hako Interiores: c
 - Nada de Evolution API/WhatsApp API como canal obrigatório — portal é a fonte da verdade
 - Gancho de marketing na LP: "acompanhe sua obra online, do contrato à entrega" (iteração futura)
 
-## RBAC (equipe interna)
+### Portal — modelo de acesso
 
-| Role | Acesso |
-|---|---|
-| Admin | tudo + usuários + ConfigSistema |
-| Comercial | clientes, funil, contratos |
-| Financeiro | clientes(read), contas a receber/pagar, relatórios |
-| Obras | clientes(read), status/etapas de obra, anexos/fotos |
+- Token na URL gerado ao criar lead/obra (ex.: `/obra/a8f3k2m9x7`), enviado por qualquer canal — sem login, sem senha, sem conta
+- Token ≥192 bits de entropia, um por lead/obra, opaco (sem IDs sequenciais)
+- Acesso **read-only**: cliente só vê a própria obra (etapas com cores, fotos, status do orçamento/contrato); únicas ações: assinar contrato (via provider, que re-autentica por e-mail/tel) e abrir chamado de garantia
+- Revogável/rotacionável pelo Admin; expiração opcional (ex.: 90 dias pós-entrega) ou permanente
+- Página evita dados sensíveis (sem CNPJ/CPF/valores expostos além do necessário); rate limit na rota + HTTPS
+- Ressalva conhecida: posse do link = acesso; por isso dados minimizados e ações restritas
+
+## RBAC e acesso
+
+**Dois mundos:**
+- **Interno** (`/dash`): Identity + roles + claims `perm="recurso.ação"` (Admin, Comercial, Financeiro, Obras)
+- **Externo** (`/obra/{token}`): cliente/colaborador/parceiro via token por vínculo — sem login/conta
+
+Claims por role: Admin→todas; Comercial→`clientes.*, funil.*, contratos.*, obras.view`; Financeiro→`financeiro.*, clientes.view, obras.view`; Obras→`obras.*, clientes.view`. Policies registradas por claim; verificadas no backend E nos widgets.
+
+**Repo:** monorepo — backend .NET em `backend/` (`.sln`+Dockerfile próprios); frontend flat na raiz (deploy inalterado); rsync exclui `backend/`, spec, `*.key`, `*.crt`, `gitactions.err` ✓ aplicado.
+
+## Dashboard (único, adaptativo por permissão)
+
+- Um `Dashboard.razor`: widgets renderizam só se `perm` permite — Financeiro vê financeiro, Obras vê obras, mesma tela
+- Widgets iniciais: total clientes, obras em andamento, faturamento mês, contas a receber/pagar, comissões pendentes, etapas atrasadas, leads novos
+- Tema claro/escuro via CSS vars + `.dark` no root + toggle na topbar (localStorage)
+- Layout: sidebar retrátil por permissão + topbar + grid de widgets
 
 ## Modelo de dados
 
