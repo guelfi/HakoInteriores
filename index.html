@@ -1,22 +1,23 @@
 <!DOCTYPE html>
 <html lang="pt-br">
-<!-- Version: 1.0.2 - Force Cache Update -->
+<!-- Version: 2.0.0 - LP inspiracional -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description"
-        content="Móveis planejados de alto padrão, design exclusivo e acabamento premium. Hako Interiores transforma ambientes com marcenaria sob medida.">
+        content="Marcenaria de alto padrão, reformas e execução completa de obra em São Paulo. A Hako transforma madeira em cenários de vida — do projeto à entrega.">
+    <meta property="og:title" content="Hako Interiores | Marcenaria e Reformas de Alto Padrão">
+    <meta property="og:description"
+        content="Beleza e funcionalidade sob medida. Marcenaria, reforma e execução completa de obra.">
+    <meta property="og:image" content="images/obra-hero.jpg">
+    <meta property="og:type" content="website">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%231a1a1a'/%3E%3Ctext x='32' y='44' font-family='Georgia,serif' font-size='36' fill='%23c5a059' text-anchor='middle'%3EH%3C/text%3E%3C/svg%3E">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <meta property="og:title" content="Hako Interiores | Móveis Planejados de Alto Padrão">
-    <meta property="og:description"
-        content="Móveis planejados de alto padrão com design exclusivo e acabamento premium.">
-    <title>Hako Interiores | Móveis Planejados de Alto Padrão</title>
-    <!-- Fontes do Google (Elegantes e Modernas) -->
+    <title>Hako Interiores | Marcenaria e Reformas de Alto Padrão</title>
     <link
-        href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap"
         rel="stylesheet">
-    <!-- Ícones -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="index.css">
 </head>
@@ -26,157 +27,259 @@
     <!-- Cabeçalho / Menu -->
     <header id="header">
         <div class="container">
-            <a href="#home" class="logo" aria-label="Início">HAKO<span>INTERIORES</span></a>
+            <a href="#home" class="logo" aria-label="Início">HAKO<span>INTERIORES</span>
+                <em>Marcenaria e Reformas</em></a>
             <nav role="navigation">
                 <ul class="nav-links" id="primary-navigation">
                     <li><a href="#home">Início</a></li>
-                    <li><a href="#sobre">A Marca</a></li>
-                    <li><a href="#portfolio">Projetos</a></li>
-                    <li><a href="#diferenciais">Diferenciais</a></li>
+                    <li><a href="#sobre">A Hako</a></li>
+                    <li><a href="#servicos">Serviços</a></li>
+                    <li><a href="#portfolio">Obras</a></li>
+                    <li><a href="#processo">Como funciona</a></li>
                     <li><a href="#contato" class="btn-contato">Contato</a></li>
                 </ul>
                 <div class="hamburger" aria-label="Abrir menu" role="button" aria-controls="primary-navigation"
-                    aria-expanded="false">
+                    aria-expanded="false" tabindex="0">
                     <i class="fas fa-bars"></i>
                 </div>
             </nav>
         </div>
     </header>
+
     <main id="main-content">
-        <!-- Seção Hero (Capa) -->
+        <!-- Hero -->
         <section id="home" class="hero" tabindex="-1">
             <div class="hero-content">
-                <h1>A Arte de Morar Bem</h1>
-                <p>Móveis planejados com design exclusivo e acabamento impecável.</p>
-                <a href="#portfolio" class="btn-primary">Ver Projetos</a>
+                <p class="eyebrow">Marcenaria &amp; Reformas · São Paulo</p>
+                <h1>Sua história merece um cenário à altura.</h1>
+                <p class="hero-sub">Móveis que combinam elegância, funcionalidade e design personalizado —
+                    desenhados para o seu jeito de morar, executados com acabamento impecável.</p>
+                <div class="hero-ctas">
+                    <a href="https://wa.me/5511948854699?text=Ol%C3%A1%2C%20Hako!%20Quero%20transformar%20meu%20espa%C3%A7o.%20Podemos%20conversar%3F"
+                        class="btn-primary btn-whatsapp" target="_blank" rel="noopener">
+                        <i class="fab fa-whatsapp"></i> Quero transformar meu espaço
+                    </a>
+                    <a href="#portfolio" class="btn-ghost">Ver obras entregues</a>
+                </div>
+            </div>
+            <!-- Prova / Faixa de credibilidade -->
+            <div class="trust-bar">
+                <div class="container trust-grid">
+                    <div class="trust-item"><i class="fab fa-instagram"></i>
+                        <span><strong>+13 mil</strong> pessoas acompanham nossas obras</span></div>
+                    <div class="trust-item"><i class="fas fa-pencil-ruler"></i>
+                        <span>Do <strong>projeto ao plano de corte</strong>, tudo em casa</span></div>
+                    <div class="trust-item"><i class="fas fa-helmet-safety"></i>
+                        <span><strong>Execução completa</strong> pela mesma equipe</span></div>
+                    <div class="trust-item"><i class="fas fa-map-marker-alt"></i>
+                        <span><strong>SP</strong>, Grande SP, Interior e Litoral</span></div>
+                </div>
             </div>
         </section>
 
-        <!-- Sobre -->
+        <!-- Sobre / Manifesto -->
         <section id="sobre" class="section" tabindex="-1">
             <div class="container split-screen">
-                <div class="text-block">
-                    <h2>Essência e Tradição</h2>
-                    <p>Assim como a referência que você busca, nossa marcenaria une a tecnologia de ponta com o cuidado
-                        artesanal. Cada peça é desenhada para se integrar perfeitamente ao seu espaço, valorizando a
-                        arquitetura e o conforto.</p>
-                    <p>Trabalhamos com as melhores matérias-primas do mercado, garantindo durabilidade e sofisticação.
-                    </p>
+                <div class="image-block reveal">
+                    <img src="images/obra-jantar.jpg" alt="Sala de jantar planejada pela Hako com pendente escultural"
+                        loading="lazy" decoding="async">
+                    <div class="image-caption">Obra entregue · Sala de jantar</div>
                 </div>
-                <div class="image-block">
-                    <img src="images/marceneiro-trabalhando.png" alt="Marceneiro trabalhando" loading="lazy"
-                        decoding="async">
+                <div class="text-block reveal">
+                    <p class="eyebrow">Quem somos</p>
+                    <h2>Não fazemos móveis. Materializamos o seu jeito de morar.</h2>
+                    <p>Cada projeto Hako nasce de uma escuta de verdade: das suas preferências, do estilo da sua
+                        casa e da vida que acontece nela. Nossos designers trabalham lado a lado com você para
+                        criar ambientes que são verdadeiramente únicos.</p>
+                    <img class="img-inline-mobile" src="images/obra-jantar.jpg"
+                        alt="Sala de jantar planejada pela Hako" loading="lazy" decoding="async">
+                    <p>E para quem busca praticidade do início ao fim, cuidamos da reforma completa —
+                        executada por profissionais altamente capacitados, com a mesma obsessão por detalhe que
+                        colocamos em cada peça de marcenaria.</p>
+                    <p class="text-sign">Beleza e funcionalidade sob medida. É isso que a gente entrega — e é por
+                        isso que a nossa reputação é construída obra após obra.</p>
+                    <a href="https://instagram.com/hakointeriores" class="link-inline" target="_blank"
+                        rel="noopener"><i class="fab fa-instagram"></i> @hakointeriores</a>
                 </div>
             </div>
         </section>
 
-        <!-- Portfólio / Galeria -->
-        <section id="portfolio" class="section bg-light" tabindex="-1">
+        <!-- Serviços -->
+        <section id="servicos" class="section bg-light" tabindex="-1">
             <div class="container">
-                <div class="section-header">
-                    <h2>Nossos Projetos</h2>
-                    <p>Inspire-se com ambientes transformados.</p>
+                <div class="section-header reveal">
+                    <p class="eyebrow">O que fazemos</p>
+                    <h2>Um time só, do primeiro traço à chave na mão</h2>
+                    <p>Você não precisa orquestrar pedreiro, marceneiro e projetista. A Hako assume tudo.</p>
                 </div>
+                <div class="features-grid">
+                    <div class="feature-card reveal">
+                        <i class="fas fa-gem"></i>
+                        <h3>Marcenaria Alto Padrão</h3>
+                        <p>Móveis sob medida com materiais premium — MDF, pedra, ferragens e puxadores de
+                            altíssima qualidade.</p>
+                    </div>
+                    <div class="feature-card reveal">
+                        <i class="fas fa-drafting-compass"></i>
+                        <h3>Projeto + Plano de Corte</h3>
+                        <p>Projeto técnico completo e plano de corte otimizado — inclusive para arquitetos e
+                            parceiros.</p>
+                    </div>
+                    <div class="feature-card reveal">
+                        <i class="fas fa-pencil-ruler"></i>
+                        <h3>Projeto de Reforma</h3>
+                        <p>Releitura completa do seu ambiente com designers que trabalham em estreita
+                            colaboração com você.</p>
+                    </div>
+                    <div class="feature-card reveal">
+                        <i class="fas fa-helmet-safety"></i>
+                        <h3>Execução Completa de Obra</h3>
+                        <p>Equipe própria do início ao fim: praticidade, prazo respeitado e satisfação
+                            garantida.</p>
+                    </div>
+                </div>
+                <p class="partners-note reveal"><i class="fas fa-handshake"></i> Somos parceiros de arquitetos e
+                    engenheiros — do plano de corte à entrega da obra.</p>
+            </div>
+        </section>
 
+        <!-- Portfólio -->
+        <section id="portfolio" class="section" tabindex="-1">
+            <div class="container">
+                <div class="section-header reveal">
+                    <p class="eyebrow">Obras entregues</p>
+                    <h2>Cada foto, uma história que virou casa</h2>
+                    <p>Trabalhos reais, fotografados como ficaram — porque acabamento não se explica, se mostra.</p>
+                </div>
                 <div class="gallery-grid">
-                    <div class="gallery-item">
-                        <img src="images/cozinha-planejada.png" alt="Cozinha Planejada" loading="lazy" decoding="async">
+                    <div class="gallery-item reveal">
+                        <img src="images/obra-cozinha.jpg" alt="Cozinha planejada com torre de eletros e ilha"
+                            loading="lazy" decoding="async">
                         <div class="overlay">
                             <h3>Cozinhas</h3>
+                            <p>O coração da casa, desenhado para receber</p>
                         </div>
                     </div>
-                    <div class="gallery-item">
-                        <img src="images/dormitorio-luxo.jpg" alt="Dormitório" loading="lazy" decoding="async">
+                    <div class="gallery-item reveal">
+                        <img src="images/obra-living-ripado.jpg" alt="Living integrado com painel ripado de madeira"
+                            loading="lazy" decoding="async">
                         <div class="overlay">
-                            <h3>Dormitórios</h3>
+                            <h3>Living Integrado</h3>
+                            <p>Ambientes que conversam entre si</p>
                         </div>
                     </div>
-                    <div class="gallery-item">
-                        <img src="images/living-home.jpg" alt="Living" loading="lazy" decoding="async">
-                        <div class="overlay">
-                            <h3>Living & Home</h3>
-                        </div>
-                    </div>
-                    <div class="gallery-item">
-                        <img src="images/banheiros-luxo.jpg" alt="Banheiros" loading="lazy" decoding="async">
+                    <div class="gallery-item reveal">
+                        <img src="images/obra-banheiro.jpg" alt="Banheiro planejado com iluminação em LED"
+                            loading="lazy" decoding="async">
                         <div class="overlay">
                             <h3>Banheiros</h3>
+                            <p>Refúgio e funcionalidade nos detalhes</p>
+                        </div>
+                    </div>
+                    <div class="gallery-item reveal">
+                        <img src="images/obra-living.jpg" alt="Sala de estar com painel de madeira e obra de arte"
+                            loading="lazy" decoding="async">
+                        <div class="overlay">
+                            <h3>Salas &amp; Painéis</h3>
+                            <p>Madeira que abraça o ambiente</p>
                         </div>
                     </div>
                 </div>
+                <p class="gallery-cta reveal"><a href="https://instagram.com/hakointeriores" target="_blank"
+                        rel="noopener" class="link-inline"><i class="fab fa-instagram"></i> Acompanhe as nossas
+                        obras pelo nosso Instagram</a></p>
             </div>
         </section>
 
-        <!-- Diferenciais -->
-        <section id="diferenciais" class="section" tabindex="-1">
+        <!-- Processo -->
+        <section id="processo" class="section bg-dark" tabindex="-1">
             <div class="container">
-                <div class="features-grid">
-                    <div class="feature-card">
-                        <i class="fas fa-pencil-ruler"></i>
-                        <h3>Design Personalizado</h3>
-                        <p>Projetos 100% sob medida para sua necessidade.</p>
+                <div class="section-header text-white reveal">
+                    <p class="eyebrow">Como funciona</p>
+                    <h2>Do sonho ao antes-e-depois, em quatro passos</h2>
+                </div>
+                <div class="steps-grid">
+                    <div class="step-card reveal">
+                        <span class="step-num">01</span>
+                        <h3>Conversa</h3>
+                        <p>Você conta o sonho pelo WhatsApp. A gente escuta de verdade — sem compromisso.</p>
                     </div>
-                    <div class="feature-card">
-                        <i class="fas fa-gem"></i>
-                        <h3>Acabamento Premium</h3>
-                        <p>Ferragens e materiais de altíssima qualidade.</p>
+                    <div class="step-card reveal">
+                        <span class="step-num">02</span>
+                        <h3>Projeto</h3>
+                        <p>Desenhamos sob medida e você aprova cada detalhe antes de qualquer corte.</p>
                     </div>
-                    <div class="feature-card">
-                        <i class="fas fa-clock"></i>
-                        <h3>Entrega Pontual</h3>
-                        <p>Respeito absoluto aos prazos acordados.</p>
+                    <div class="step-card reveal">
+                        <span class="step-num">03</span>
+                        <h3>Produção</h3>
+                        <p>Você acompanha a marcenaria ganhando forma, com materiais nobres e plano de corte
+                            otimizado.</p>
+                    </div>
+                    <div class="step-card reveal">
+                        <span class="step-num">04</span>
+                        <h3>Entrega</h3>
+                        <p>Montagem e acabamento impecável — e a virada de chave a gente celebra junto.</p>
                     </div>
                 </div>
             </div>
         </section>
 
         <!-- Contato -->
-        <section id="contato" class="section bg-dark" tabindex="-1">
-            <div class="container">
-                <div class="section-header text-white">
-                    <h2>Vamos conversar?</h2>
-                    <p>Solicite um orçamento ou agende uma visita ao showroom.</p>
+        <section id="contato" class="section" tabindex="-1">
+            <div class="container contact-wrap">
+                <div class="contact-copy reveal">
+                    <p class="eyebrow">Vamos conversar?</p>
+                    <h2>O próximo antes-e-depois pode ser o seu.</h2>
+                    <p>Conte o que você imagina — um ambiente, um cômodo, a casa inteira. Respondemos pelo
+                        WhatsApp com atenção e sem compromisso.</p>
+                    <ul class="contact-channels">
+                        <li><i class="fas fa-map-marker-alt"></i> Ipiranga — São Paulo · atendemos Grande SP,
+                            Interior e Litoral</li>
+                        <li><a href="mailto:contato@hakointeriores.com.br"><i class="fas fa-envelope"></i>
+                                contato@hakointeriores.com.br</a></li>
+                        <li><a href="https://wa.me/5511948854699" target="_blank" rel="noopener"><i
+                                    class="fab fa-whatsapp"></i> (11) 94885-4699</a></li>
+                        <li><a href="https://instagram.com/hakointeriores" target="_blank" rel="noopener"><i
+                                    class="fab fa-instagram"></i> @hakointeriores</a></li>
+                    </ul>
                 </div>
-                <form class="contact-form">
-                    <input type="text" placeholder="Seu Nome" required>
-                    <input type="email" placeholder="Seu E-mail" required>
-                    <input type="tel" placeholder="Seu Telefone/WhatsApp" required>
-                    <textarea placeholder="Conte um pouco sobre seu projeto..." rows="5"></textarea>
-                    <button type="submit" class="btn-primary">Enviar Mensagem</button>
+                <form class="contact-form reveal" id="contact-form">
+                    <input type="text" name="nome" placeholder="Seu nome" required>
+                    <input type="tel" name="telefone" placeholder="Seu telefone/WhatsApp" required>
+                    <textarea name="mensagem" placeholder="Conte um pouco sobre seu projeto — ambiente, medidas aproximadas, prazo..."
+                        rows="5"></textarea>
+                    <button type="submit" class="btn-primary btn-whatsapp"><i class="fab fa-whatsapp"></i> Enviar
+                        pelo WhatsApp</button>
+                    <p class="form-hint">Ao enviar, abrimos o WhatsApp com sua mensagem pronta.</p>
                 </form>
             </div>
         </section>
 
-        <!-- Footer -->
-        <footer>
-            <div class="container footer-content">
-                <div class="footer-info">
-                    <h4>HAKO Interiores</h4>
-                    <p>Transformando madeira em sonhos.</p>
-                </div>
-                <div class="footer-contact">
-                    <p><i class="fas fa-map-marker-alt"></i> Av. Principal, 1000 - São Paulo, SP</p>
-                    <p><i class="fas fa-phone"></i> (11) 99999-9999</p>
-                    <p><i class="fas fa-envelope"></i> contato@hakointeriores.com.br</p>
-                </div>
-                <div class="footer-social">
-                    <a href="#" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
-                    <a href="#" aria-label="Facebook"><i class="fab fa-facebook"></i></a>
-                    <a href="#" aria-label="WhatsApp"><i class="fab fa-whatsapp"></i></a>
-                </div>
-            </div>
-            <div class="copyright">
-                <p>&copy; 2025 Hako Interiores. Todos os direitos reservados.</p>
-            </div>
-        </footer>
     </main>
 
-    <div class="scroll-hint-stack" aria-hidden="true">
-        <button class="scroll-hint-btn" type="button" data-dir="up" aria-label="Deslize para cima"><i
-                class="fas fa-hand-point-up"></i></button>
-        <button class="scroll-hint-btn" type="button" data-dir="down" aria-label="Deslize para baixo"><i
-                class="fas fa-hand-point-down"></i></button>
+    <!-- Barra fixa de rodapé -->
+    <div class="footer-bar" id="footer-bar">
+        <div class="container">
+            <span class="footer-brand"><strong>HAKO Interiores</strong> · Marcenaria e Reformas</span>
+            <div class="footer-links">
+                <a href="https://wa.me/5511948854699" target="_blank" rel="noopener"><i
+                        class="fab fa-whatsapp"></i>(11) 94885-4699</a>
+                <a href="mailto:contato@hakointeriores.com.br" aria-label="E-mail"><i
+                        class="fas fa-envelope"></i> contato@hakointeriores.com.br</a>
+                <a href="https://instagram.com/hakointeriores" target="_blank" rel="noopener"><i
+                        class="fab fa-instagram"></i>@hakointeriores</a>
+            </div>
+            <span class="footer-copy">&copy; 2026 Hako Interiores · <a href="privacidade.html">Política de
+                    Privacidade</a></span>
+        </div>
     </div>
+
+    <!-- Botão flutuante WhatsApp -->
+    <a href="https://wa.me/5511948854699?text=Ol%C3%A1%2C%20Hako!%20Quero%20um%20or%C3%A7amento."
+        class="whatsapp-float" target="_blank" rel="noopener" aria-label="Falar no WhatsApp">
+        <i class="fab fa-whatsapp"></i>
+    </a>
+
     <script src="index.js"></script>
 </body>
 
