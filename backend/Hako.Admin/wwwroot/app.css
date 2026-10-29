@@ -185,7 +185,7 @@ h1:focus {
   .grid{min-width:0;font-size:13px}
   .grid th{padding:10px;font-size:10px}
   .grid td{padding:8px 10px}
-  .widgets{grid-template-columns:repeat(2,1fr);grid-auto-rows:minmax(96px,auto);gap:10px;align-content:start;flex:0 0 auto}
+  .widgets{grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr;gap:10px;align-content:stretch;flex:1}
   .widget{padding:14px}
   .widget strong{font-size:22px}
   .w-label{font-size:10px}
@@ -243,3 +243,9 @@ html,body{height:100%;overflow:hidden}
 .pwd{position:relative;display:block}
 .pwd input{width:100%;padding-right:38px;box-sizing:border-box}
 .pwd .eye{position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:0;cursor:pointer;font-size:15px;color:var(--muted,#888);padding:4px}
+
+/* ===== ajustes UX (r4) ===== */
+.fases{flex-wrap:nowrap}
+.fase{min-width:0}
+.fase span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wide-head{display:flex;align-items:baseline;gap:10px}

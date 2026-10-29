@@ -1,4 +1,8 @@
 <section class="widgets">
+    @if (HasPerm("funil.view"))
+    {
+        <div class="widget"><span class="w-label">Leads novos (site)</span><strong>9</strong><small class="up">3 orçamentos em aberto</small></div>
+    }
     @if (HasPerm("clientes.view"))
     {
         <div class="widget"><span class="w-label">Clientes ativos</span><strong>47</strong><small class="up">+6 este mês</small></div>
@@ -11,18 +15,14 @@
     @if (HasPerm("financeiro.view"))
     {
         <div class="widget"><span class="w-label">Faturamento do mês</span><strong>R$ 284k</strong><small class="up">+18% vs anterior</small></div>
+        <div class="widget"><span class="w-label">Comissões pendentes</span><strong>R$ 12,4k</strong><small>3 parceiros</small></div>
         <div class="widget warn"><span class="w-label">A receber (30d)</span><strong>R$ 96k</strong><small>8 parcelas</small></div>
         <div class="widget danger"><span class="w-label">A pagar (30d)</span><strong>R$ 61k</strong><small>5 parcelas · 1 vencida</small></div>
-        <div class="widget"><span class="w-label">Comissões pendentes</span><strong>R$ 12,4k</strong><small>3 parceiros</small></div>
-    }
-    @if (HasPerm("funil.view"))
-    {
-        <div class="widget"><span class="w-label">Leads novos (site)</span><strong>9</strong><small class="up">3 orçamentos em aberto</small></div>
     }
     @if (HasPerm("obras.view"))
     {
         <div class="widget wide">
-            <span class="w-label">Obras por fase</span>
+            <div class="wide-head"><strong>12</strong><span class="w-label">Obras por fase</span></div>
             <div class="fases">
                 @foreach (var f in Fases)
                 {
