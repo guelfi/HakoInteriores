@@ -1,17 +1,19 @@
-<p class="hint">Arraste os cards entre as colunas para mover o lead no funil.</p>
+<p class="hint">Arraste ou toque num card e depois na coluna de destino.</p>
 
 <div class="board-wrap">
     <div class="board">
         @foreach (var col in Colunas)
         {
-            <div class="bcol @(DragOver == col ? "drop" : "")"
+            <div class="bcol @(DragOver == col || (Sel is not null && Sel.Value.Col != col) ? "drop" : "")"
+                 @onclick="() => ToqueCol(col)"
                  @ondragover="() => DragOver = col" @ondragover:preventDefault
                  @ondrop="() => Drop(col)" @ondragleave="() => DragOver = null">
                 <header>@col.Nome <span class="count">@col.Leads.Count</span></header>
                 @foreach (var l in col.Leads)
                 {
-                    <div class="kcard @(col.Nome is "Ganho" ? "h-ok" : col.Nome is "Perdido" ? "h-err" : "")"
-                         draggable="true" @ondragstart="() => Drag = (col, l)">
+                    <div class="kcard @(col.Nome is "Ganho" ? "h-ok" : col.Nome is "Perdido" ? "h-err" : "") @(Sel?.Lead == l ? "picked" : "")"
+                         draggable="true" @ondragstart="() => Drag = (col, l)"
+                         @onclick="() => ToqueCard(col, l)" @onclick:stopPropagation>
                         <b>@l.Nome</b>
                         <small>@l.Interesse</small>
                         <small class="mono muted">@l.Tel</small>
@@ -35,8 +37,21 @@
     class Col { public required string Nome; public List<Lead> Leads = []; }
 
     (Col Col, Lead Lead)? Drag;
+    (Col Col, Lead Lead)? Sel;
     Col? DragOver;
     bool IgnorarHint;
+
+    void ToqueCard(Col col, Lead lead) => Sel = Sel?.Lead == lead ? null : (col, lead);
+
+    void ToqueCol(Col destino)
+    {
+        if (Sel is { } s && s.Col != destino)
+        {
+            s.Col.Leads.Remove(s.Lead);
+            destino.Leads.Add(s.Lead);
+        }
+        Sel = null;
+    }
 
     void Drop(Col destino)
     {

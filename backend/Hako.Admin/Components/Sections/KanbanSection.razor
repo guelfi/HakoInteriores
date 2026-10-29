@@ -6,19 +6,22 @@
         <option>Banheiro completo — Beatriz Nunes</option>
     </select>
 </div>
-<p class="hint">Arraste as etapas entre as colunas · cor = saúde do prazo: ⚪ a iniciar · 🟢 no prazo · 🟡 atenção · 🔴 atrasada · 🔵 concluída</p>
+<p class="hint">Arraste ou toque num card e depois na coluna de destino · cor = saúde do prazo: ⚪ a iniciar · 🟢 no prazo · 🟡 atenção · 🔴 atrasada · 🔵 concluída</p>
 
 <div class="board-wrap">
     <div class="board kanban">
         @foreach (var col in Colunas)
         {
-            <div class="bcol @(DragOver == col ? "drop" : "")"
+            <div class="bcol @(DragOver == col || (Sel is not null && Sel.Value.Col != col) ? "drop" : "")"
+                 @onclick="() => ToqueCol(col)"
                  @ondragover="() => DragOver = col" @ondragover:preventDefault
                  @ondrop="() => Drop(col)" @ondragleave="() => DragOver = null">
                 <header>@col.Nome <span class="count">@col.Etapas.Count</span></header>
                 @foreach (var e in col.Etapas)
                 {
-                    <div class="kcard @e.Saude" draggable="true" @ondragstart="() => Drag = (col, e)">
+                    <div class="kcard @e.Saude @(Sel?.Etapa == e ? "picked" : "")"
+                         draggable="true" @ondragstart="() => Drag = (col, e)"
+                         @onclick="() => ToqueCard(col, e)" @onclick:stopPropagation>
                         <b>@e.Nome</b>
                         <small>@e.Resp</small>
                         <small class="mono muted">prev: @e.Prev</small>
@@ -42,8 +45,21 @@
     class Col { public required string Nome; public List<Etapa> Etapas = []; }
 
     (Col Col, Etapa Etapa)? Drag;
+    (Col Col, Etapa Etapa)? Sel;
     Col? DragOver;
     bool IgnorarHint;
+
+    void ToqueCard(Col col, Etapa etapa) => Sel = Sel?.Etapa == etapa ? null : (col, etapa);
+
+    void ToqueCol(Col destino)
+    {
+        if (Sel is { } s && s.Col != destino)
+        {
+            s.Col.Etapas.Remove(s.Etapa);
+            destino.Etapas.Add(s.Etapa);
+        }
+        Sel = null;
+    }
 
     void Drop(Col destino)
     {
