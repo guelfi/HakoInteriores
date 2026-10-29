@@ -22,14 +22,10 @@
             </div>
         }
     </div>
-    @if (!IgnorarHint)
-    {
-        <div class="rotate-hint">
-            <span class="rot-ico">↻</span>
-            <p>Gire o dispositivo para visualizar o board</p>
-            <button type="button" class="btn" @onclick="() => IgnorarHint = true">Continuar assim mesmo</button>
-        </div>
-    }
+    <div class="rotate-hint">
+        <span class="rot-ico">↻</span>
+        <p>Gire o dispositivo para visualizar o board</p>
+    </div>
 </div>
 
 @code {
@@ -39,7 +35,6 @@
     (Col Col, Lead Lead)? Drag;
     (Col Col, Lead Lead)? Sel;
     Col? DragOver;
-    bool IgnorarHint;
 
     void ToqueCard(Col col, Lead lead) => Sel = Sel?.Lead == lead ? null : (col, lead);
 
