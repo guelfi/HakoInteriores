@@ -8,9 +8,9 @@ Spec consolidada do brainstorm (out/2026). Backend interno da Hako Interiores: c
 - **EF Core + SQLite** (arquivo em volume Docker; migração futura p/ Postgres só trocando provider)
 - **ASP.NET Identity** (usuários internos) + roles
 - Container `hako-admin` na mesma rede Docker do site (`www_projetos-net`), atrás do Nginx proxy
-- **Admin:** `hakointeriores.com.br/dash` (Nginx location `/dash` → `hako-admin`; Blazor `PathBase="/dash"`) — caminho não-publicado, sem link no menu da LP. Proteção real = Identity+roles+rate limit; a obscuridade é só camada extra
+- **Admin:** `hakointeriores.com.br/dashboard` (Nginx location `/dashboard` → `hako-admin`; Blazor `PathBase="/dashboard"`) — caminho não-publicado, sem link no menu da LP. Proteção real = Identity+roles+rate limit; a obscuridade é só camada extra
 - **Portal do cliente:** `hakointeriores.com.br/obra/{token}`
-- **Segurança (todas as camadas):** Cloudflare (WAF/rate-limit/proxy) → OCI → app .NET (Identity + roles + rate limiting + HTTPS + headers de segurança + validação de input em todo endpoint). Caminho `/dash` não-publicado é só camada extra — nunca substitui auth. Boas práticas são requisito de entrega, não opcionais
+- **Segurança (todas as camadas):** Cloudflare (WAF/rate-limit/proxy) → OCI → app .NET (Identity + roles + rate limiting + HTTPS + headers de segurança + validação de input em todo endpoint). Caminho `/dashboard` não-publicado é só camada extra — nunca substitui auth. Boas práticas são requisito de entrega, não opcionais
 - **LGPD:** LP recebe link "Política de Privacidade" no rodapé (`/privacidade.html`); backend deve registrar consentimento e direitos do titular (acesso/correção/exclusão)
 
 ## Portal do cliente — peça central (SEM login, SEM dependência de WhatsApp)
@@ -35,7 +35,7 @@ Spec consolidada do brainstorm (out/2026). Backend interno da Hako Interiores: c
 ## RBAC e acesso
 
 **Dois mundos:**
-- **Interno** (`/dash`): Identity + roles + claims `perm="recurso.ação"` (Admin, Comercial, Financeiro, Obras)
+- **Interno** (`/dashboard`): Identity + roles + claims `perm="recurso.ação"` (Admin, Comercial, Financeiro, Obras)
 - **Externo** (`/obra/{token}`): cliente/colaborador/parceiro via token por vínculo — sem login/conta
 
 Claims por role: Admin→todas; Comercial→`clientes.*, funil.*, contratos.*, obras.view`; Financeiro→`financeiro.*, clientes.view, obras.view`; Obras→`obras.*, clientes.view`. Policies registradas por claim; verificadas no backend E nos widgets.
@@ -47,7 +47,27 @@ Claims por role: Admin→todas; Comercial→`clientes.*, funil.*, contratos.*, o
 - Um `Dashboard.razor`: widgets renderizam só se `perm` permite — Financeiro vê financeiro, Obras vê obras, mesma tela
 - Widgets iniciais: total clientes, obras em andamento, faturamento mês, contas a receber/pagar, comissões pendentes, etapas atrasadas, leads novos
 - Tema claro/escuro via CSS vars + `.dark` no root + toggle na topbar (localStorage)
-- Layout: sidebar retrátil por permissão + topbar + grid de widgets
+- Layout: sidebar auto-oculta + topbar + área de conteúdo por seção
+
+## UI/UX do admin — navegação e padrões de tela
+
+**Sidebar auto-oculta (sem JS):** colapsada por padrão mostrando só o rail de ícones; expande em overlay no `:hover`; mouse sai sem selecionar → recolhe mantendo a seção ativa; selecionou → navega e recolhe. Item ativo destacado no rail. Mobile: drawer via hambúrguer.
+
+**Seções (topbar exibe o nome da seção ativa):** Dashboard · Clientes · Funil · Obras · Kanban · Financeiro · Contratos · Equipe · Config — cada item filtrado por `perm`; seção sem implementação exibe placeholder com o nome.
+
+**Padrão grid (CRUD):** toolbar com `[+ Novo]` à esquerda e paginação ⏮ ◀ ▶ ⏭ à direita; clicar na linha abre o mesmo card-modal da inclusão (novo → [Salvar][Cancelar]; existente → [Salvar][Inativar|Cancelar…][Voltar]). **Nunca há exclusão de dados** — só inativação ou cancelamento; cancelamentos exigem justificativa (lançamentos, obras, contratos). Usuário logado fica na topbar (à direita) com dropdown: *Meu perfil* (modal: usuário, nome completo, senha ×2 com regras) e *Sair*. Tema claro/escuro no rodapé da sidebar. Boards (funil/kanban) com drag&drop entre colunas.
+
+- **Clientes** — colunas: status (Lead|Cliente) + ativo/inativo, ícone de obra (em andamento 🛠 / entregue ✓ / cancelada ✗, +contador se >1), badge de atraso se houver etapa vermelha, nome, celular (contato direto sem abrir card)
+- **Equipe** (unificada) — Funcionários + Colaboradores + Parceiros num único grid, badge de perfil por linha; comissão% só para parceiros
+- **Financeiro** — grid único pagar+receber: ícone direção (▲ pagar / ▼ receber), status (pago ✓ / pendente / vencido 🔴), descrição, beneficiário/cliente, valor, vencimento
+- **Contratos** — abas: *Modelos* (ContratoTemplates) e *Emitidos* (contratos por cliente com status enviado/aguardando/assinado)
+- **Obras** — grid de obras em andamento (não tipos — tipos ficam em Config/TiposServico): cliente, tipo, fase atual, %, previsão, cor de saúde
+- **Funil** — colunas do pipeline com cards de lead: Novo → Contato → Visita/Medição → Orçamento → Negociação → Ganho | Perdido
+- **Kanban** — board por obra: 5 colunas da spec com cards coloridos por saúde do prazo (drag-drop real na impl.; no mock, cards estáticos)
+
+**Mock atual:** dados estáticos + seletor "visualizar como" (simula role sem Identity real). Serve para validar concepção e navegação antes da Fase 1 de auth.
+
+**Sessão ↔ LP:** logado, o app grava cookie-marcador `hako_auth=1` (não-HttpOnly, sem valor de credencial — só dica visual; se forjado, o pior caso é exibir link que cai no login). A LP lê o cookie e exibe no menu `[Dashboard]` (`/dashboard`) + `Sair` (`/dashboard/conta/sair` → endpoint Identity que faz signout, limpa o marcador e redireciona à LP). No admin: "Voltar ao site" no rodapé da sidebar + "Sair" na topbar (rota/URL do site via config `SiteUrl`).
 
 ## Modelo de dados
 
@@ -106,7 +126,8 @@ Decisão postergada. `ISignatureProvider`: `ZapSignProvider` (SaaS BR ~R$1-2/doc
 
 | # | Escopo |
 |---|---|
-| 1 | Scaffold .NET 10 + Blazor + Identity + SQLite + roles |
+| 0 | Scaffold .NET 10 + Blazor + **mock navegável do admin** (sidebar auto-hide, grids, funil, kanban estático, seletor de role) ✓ em andamento |
+| 1 | Identity + SQLite + roles/claims + políticas reais |
 | 2 | Cadastros base (TiposServico+Templates, Colaboradores, Parceiros, Clientes) + funil de leads + portal read-only (acompanha negociação) |
 | 3 | Obras + equipe + Kanban drag-drop com cores + QR/foto por etapa + portal mostra etapas |
 | 4 | Financeiro completo (receber+pagar+comissões) + margem por obra |

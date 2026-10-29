@@ -1,0 +1,11 @@
+<div class="placeholder">
+    <div class="ph-icon">⚙</div>
+    <h2>@Nome</h2>
+    <p>@Desc</p>
+    <small class="muted">Seção planejada — dados mock</small>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Nome { get; set; } = "";
+    [Parameter] public string Desc { get; set; } = "";
+}

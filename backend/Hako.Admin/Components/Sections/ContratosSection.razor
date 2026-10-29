@@ -1,0 +1,159 @@
+<div class="tabs">
+    <button class="tab @(Tab == 0 ? "on" : "")" @onclick="() => Tab = 0">Emitidos</button>
+    <button class="tab @(Tab == 1 ? "on" : "")" @onclick="() => Tab = 1">Modelos</button>
+</div>
+
+<div class="toolbar">
+    <div class="actions">
+        <button class="btn primary" @onclick="Novo">@(Tab == 0 ? "+ Emitir contrato" : "+ Novo modelo")</button>
+    </div>
+    <div class="pager">
+        <button disabled title="Início">⏮</button><button disabled title="Anterior">◀</button>
+        <span>1 / 1</span>
+        <button disabled title="Próximo">▶</button><button disabled title="Fim">⏭</button>
+    </div>
+</div>
+
+@if (Tab == 0)
+{
+    <div class="grid-card">
+        <table class="grid">
+            <thead><tr><th>Status</th><th>Cliente</th><th class="hide-m">Modelo</th><th class="hide-m">Enviado em</th><th class="hide-m">Assinado em</th></tr></thead>
+            <tbody>
+                @foreach (var c in Emitidos)
+                {
+                    <tr @onclick="() => EditarEmit(c)">
+                        <td><span class="badge @c.Cls">@c.Status</span></td>
+                        <td>@c.Cliente</td><td class="hide-m">@c.Modelo</td>
+                        <td class="mono hide-m">@c.Enviado</td><td class="mono hide-m">@c.Assinado</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <div class="grid-card">
+        <table class="grid">
+            <thead><tr><th>Modelo</th><th class="hide-m">Cláusulas</th><th class="hide-m">Versão</th><th>Ativo</th></tr></thead>
+            <tbody>
+                @foreach (var m in Modelos)
+                {
+                    <tr @onclick="() => EditarMod(m)">
+                        <td>@m.Nome</td><td class="num hide-m">@m.Clausulas</td>
+                        <td class="mono hide-m">@m.Versao</td>
+                        <td><i class="dot @(m.Ativo ? "on" : "off")"></i></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (FormEmit is not null)
+{
+    <div class="modal-back" @onclick="() => FormEmit = null">
+        <div class="modal" @onclick:stopPropagation>
+            <h3>@(IsNew ? "Emitir contrato" : "Contrato")</h3>
+            <label class="fld">Cliente
+                <select @bind="FormEmit.Cliente">
+                    <option>Mariana Costa</option><option>Roberto Almeida</option>
+                    <option>Camila Ferraz</option><option>Beatriz Nunes</option>
+                </select>
+            </label>
+            <label class="fld">Modelo
+                <select @bind="FormEmit.Modelo">
+                    <option>Prestação de serviço — marcenaria</option>
+                    <option>Prestação de serviço — reforma</option>
+                    <option>Termo de entrega e garantia</option>
+                </select>
+            </label>
+            @if (!IsNew)
+            {
+                <label class="fld">Status
+                    <select @bind="FormEmit.Status">
+                        <option>Rascunho</option><option>Enviado</option>
+                        <option>Aguardando</option><option>Assinado</option>
+                    </select>
+                </label>
+            }
+            @if (Cancelando)
+            {
+                <label class="fld">Justificativa do cancelamento (obrigatória)
+                    <textarea rows="2" placeholder="Motivo do cancelamento do contrato"></textarea>
+                </label>
+            }
+            <div class="actions end">
+                <button class="btn" @onclick="Fechar">Voltar</button>
+                @if (!IsNew && !Cancelando) { <button class="btn danger" @onclick="() => Cancelando = true">Cancelar contrato</button> }
+                @if (Cancelando) { <button class="btn danger" @onclick="Fechar">Confirmar cancelamento</button> }
+                <button class="btn primary" @onclick="Fechar">Salvar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (FormMod is not null)
+{
+    <div class="modal-back" @onclick="() => FormMod = null">
+        <div class="modal" @onclick:stopPropagation>
+            <h3>@(IsNew ? "Novo modelo" : "Modelo de contrato")</h3>
+            <label class="fld">Nome do modelo<input @bind="FormMod.Nome"></label>
+            <div class="fld-row">
+                <label class="fld">Nº de cláusulas<input @bind="FormMod.ClausulasTxt"></label>
+                <label class="fld">Versão<input @bind="FormMod.Versao" placeholder="v1.0"></label>
+            </div>
+            <label class="fld chk"><input type="checkbox" @bind="FormMod.Ativo"> Ativo</label>
+            <div class="actions end">
+                <button class="btn" @onclick="Fechar">Cancelar</button>
+                @if (!IsNew) { <button class="btn danger" @onclick="() => { FormMod!.Ativo = false; Fechar(); }">Desativar</button> }
+                <button class="btn primary" @onclick="Fechar">Salvar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    int Tab;
+    bool IsNew;
+    bool Cancelando;
+    Emit? FormEmit;
+    Mod? FormMod;
+
+    class Emit
+    {
+        public string Status = "Rascunho"; public string Cliente = ""; public string Modelo = "";
+        public string Enviado = "—"; public string Assinado = "—";
+        public string Cls => Status switch { "Assinado" => "b-ok", "Aguardando" => "b-warn", "Enviado" => "b-info", _ => "b-muted" };
+    }
+    List<Emit> Emitidos =
+    [
+        new() { Status = "Assinado", Cliente = "Mariana Costa", Modelo = "Prestação de serviço — marcenaria", Enviado = "02/10/2026", Assinado = "04/10/2026" },
+        new() { Status = "Aguardando", Cliente = "Roberto Almeida", Modelo = "Prestação de serviço — marcenaria", Enviado = "24/10/2026" },
+        new() { Status = "Enviado", Cliente = "Camila Ferraz", Modelo = "Prestação de serviço — reforma", Enviado = "26/10/2026" },
+        new() { Status = "Rascunho", Cliente = "Beatriz Nunes", Modelo = "Prestação de serviço — reforma" },
+    ];
+
+    class Mod
+    {
+        public string Nome = ""; public int Clausulas; public string Versao = "v1.0"; public bool Ativo = true;
+        public string ClausulasTxt { get => Clausulas.ToString(); set => Clausulas = int.TryParse(value, out var v) ? v : Clausulas; }
+    }
+    List<Mod> Modelos =
+    [
+        new() { Nome = "Prestação de serviço — marcenaria", Clausulas = 14, Versao = "v2.1" },
+        new() { Nome = "Prestação de serviço — reforma", Clausulas = 18, Versao = "v1.4" },
+        new() { Nome = "Termo de entrega e garantia", Clausulas = 8, Versao = "v1.0" },
+        new() { Nome = "Contrato antigo (2024)", Clausulas = 12, Versao = "v1.0", Ativo = false },
+    ];
+
+    void Novo()
+    {
+        IsNew = true; Cancelando = false;
+        if (Tab == 0) FormEmit = new Emit(); else FormMod = new Mod();
+    }
+    void EditarEmit(Emit c) { FormEmit = c; IsNew = false; Cancelando = false; }
+    void EditarMod(Mod m) { FormMod = m; IsNew = false; }
+    void Fechar() { FormEmit = null; FormMod = null; Cancelando = false; }
+}

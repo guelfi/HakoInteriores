@@ -1,0 +1,45 @@
+<section class="widgets">
+    @if (HasPerm("clientes.view"))
+    {
+        <div class="widget"><span class="w-label">Clientes ativos</span><strong>47</strong><small class="up">+6 este mês</small></div>
+    }
+    @if (HasPerm("obras.view"))
+    {
+        <div class="widget"><span class="w-label">Obras em andamento</span><strong>12</strong><small>3 entregues no mês</small></div>
+        <div class="widget warn"><span class="w-label">Etapas atrasadas</span><strong>4</strong><small class="down">2 críticas</small></div>
+    }
+    @if (HasPerm("financeiro.view"))
+    {
+        <div class="widget"><span class="w-label">Faturamento do mês</span><strong>R$ 284k</strong><small class="up">+18% vs anterior</small></div>
+        <div class="widget warn"><span class="w-label">A receber (30d)</span><strong>R$ 96k</strong><small>8 parcelas</small></div>
+        <div class="widget danger"><span class="w-label">A pagar (30d)</span><strong>R$ 61k</strong><small>5 parcelas · 1 vencida</small></div>
+        <div class="widget"><span class="w-label">Comissões pendentes</span><strong>R$ 12,4k</strong><small>3 parceiros</small></div>
+    }
+    @if (HasPerm("funil.view"))
+    {
+        <div class="widget"><span class="w-label">Leads novos (site)</span><strong>9</strong><small class="up">3 orçamentos em aberto</small></div>
+    }
+    @if (HasPerm("obras.view"))
+    {
+        <div class="widget wide">
+            <span class="w-label">Obras por fase</span>
+            <div class="fases">
+                @foreach (var f in Fases)
+                {
+                    <div class="fase"><i style="--p:@f.Pct"></i><span>@f.Nome</span><b>@f.Qtd</b></div>
+                }
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Func<string, bool> HasPerm { get; set; } = _ => false;
+
+    record Fase(string Nome, int Qtd, int Pct);
+    static readonly Fase[] Fases =
+    [
+        new("Projeto", 3, 60), new("Produção", 5, 45),
+        new("Montagem", 2, 80), new("Entrega", 2, 95),
+    ];
+}

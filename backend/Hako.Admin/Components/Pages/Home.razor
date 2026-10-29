@@ -1,0 +1,149 @@
+@page "/home"
+@rendermode InteractiveServer
+@inject IConfiguration Config
+
+<PageTitle>Hako · @Current.Label</PageTitle>
+
+<div class="admin-shell">
+    <input type="checkbox" id="nav-toggle" class="nav-toggle" hidden @bind="NavOpen">
+    <input type="checkbox" id="theme-toggle" class="theme-toggle" hidden>
+
+    <aside class="sidebar">
+        <div class="brand"><span class="logo-mark">H</span><span class="logo-text">Hako<strong>Admin</strong></span></div>
+        <nav>
+            @foreach (var item in NavItems.Where(n => HasPerm(n.Perm)))
+            {
+                <button class="nav-item @(item.Key == Active ? "active" : "")" title="@item.Label"
+                        @onclick="() => Select(item.Key)">
+                    <i>@item.Icon</i><span>@item.Label</span>
+                </button>
+            }
+        </nav>
+        <div class="side-foot">
+            <label class="nav-item theme-btn" for="theme-toggle" title="Alternar tema">
+                <i><span class="sun">☀</span><span class="moon">☾</span></i><span>Tema</span>
+            </label>
+            <a class="nav-item" href="@SiteUrl" title="Voltar ao site"><i>↩</i><span>Voltar ao site</span></a>
+        </div>
+    </aside>
+
+    <div class="content">
+        <header class="topbar">
+            <label for="nav-toggle" class="hamb">☰</label>
+            <h1>@Current.Label</h1>
+            <div class="user-menu">
+                <button class="user-btn" @onclick="() => MenuAberto = !MenuAberto">
+                    <span class="avatar">AH</span><span class="u-label">Admin Hako ▾</span>
+                </button>
+                @if (MenuAberto)
+                {
+                    <div class="menu">
+                        <button class="menu-item" @onclick="AbrirPerfil">◉ Meu perfil</button>
+                        <a class="menu-item" href="./">⎋ Sair</a>
+                    </div>
+                }
+            </div>
+        </header>
+
+        <main class="page" @onclick="FecharMenus">
+            @switch (Current.Key)
+            {
+                case "clientes": <ClientesSection /> break;
+                case "funil": <FunilSection /> break;
+                case "obras": <ObrasSection /> break;
+                case "kanban": <KanbanSection /> break;
+                case "financeiro": <FinanceiroSection /> break;
+                case "contratos": <ContratosSection /> break;
+                case "equipe": <EquipeSection /> break;
+                case "config": <PlaceholderSection Nome="Config" Desc="Tipos de serviço, templates de etapa e parâmetros do sistema (ex.: kanban.alertaPct)." /> break;
+                default: <DashboardSection HasPerm="HasPerm" /> break;
+            }
+        </main>
+    </div>
+
+    @if (ShowPerfil)
+    {
+        <div class="modal-back" @onclick="() => ShowPerfil = false">
+            <div class="modal" @onclick:stopPropagation>
+                <h3>Meu perfil</h3>
+                <label class="fld">Nome de usuário<input value="admin" disabled></label>
+                <label class="fld">Nome completo<input value="Administrador Hako"></label>
+                <label class="fld">Nova senha
+                    <span class="pwd"><input type="@(Ver1 ? "text" : "password")" placeholder="••••••••"><button type="button" class="eye" @onclick="() => Ver1 = !Ver1" title="@(Ver1 ? "Ocultar senha" : "Mostrar senha")">@EyeIcon(Ver1)</button></span>
+                </label>
+                <label class="fld">Confirmar senha
+                    <span class="pwd"><input type="@(Ver2 ? "text" : "password")" placeholder="••••••••"><button type="button" class="eye" @onclick="() => Ver2 = !Ver2" title="@(Ver2 ? "Ocultar senha" : "Mostrar senha")">@EyeIcon(Ver2)</button></span>
+                </label>
+                <small class="muted">Mín. 8 caracteres com maiúscula, minúscula, número e símbolo.</small>
+                <div class="actions end">
+                    <button class="btn" @onclick="() => ShowPerfil = false">Cancelar</button>
+                    <button class="btn primary">Salvar</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    const string Role = "Admin"; // mock — virá do Identity na Fase 1
+    string Active = "dash";
+    bool ShowPerfil;
+    bool MenuAberto;
+    bool NavOpen;
+    bool Ver1, Ver2;
+    string SiteUrl => Config["SiteUrl"] ?? "/";
+
+    static readonly Dictionary<string, string[]> Perms = new()
+    {
+        ["Admin"] = ["clientes.*", "funil.*", "contratos.*", "obras.*", "financeiro.*", "equipe.*", "config.*"],
+        ["Comercial"] = ["clientes.*", "funil.*", "contratos.*", "obras.view"],
+        ["Financeiro"] = ["financeiro.*", "clientes.view", "obras.view"],
+        ["Obras"] = ["obras.*", "clientes.view", "equipe.view"],
+    };
+
+    bool HasPerm(string need)
+    {
+        var perms = Perms.GetValueOrDefault(Role) ?? [];
+        var res = need.Split('.')[0];
+        return perms.Any(p => p == need || p == $"{res}.*");
+    }
+
+    record Nav(string Key, string Label, string Icon, string Perm);
+    static readonly Nav[] NavItems =
+    [
+        new("dash", "Dashboard", "▣", "clientes.view"),
+        new("clientes", "Clientes", "◉", "clientes.view"),
+        new("funil", "Funil", "◫", "funil.view"),
+        new("obras", "Obras", "▤", "obras.view"),
+        new("kanban", "Kanban", "▦", "obras.edit"),
+        new("financeiro", "Financeiro", "◈", "financeiro.view"),
+        new("contratos", "Contratos", "✎", "contratos.view"),
+        new("equipe", "Equipe", "⚒", "equipe.view"),
+        new("config", "Config", "⚙", "config.view"),
+    ];
+
+    Nav Current => NavItems.FirstOrDefault(n => n.Key == Active && HasPerm(n.Perm))
+                   ?? NavItems.First(n => HasPerm(n.Perm));
+
+    void Select(string key)
+    {
+        Active = key;
+        NavOpen = false;
+    }
+
+    void FecharMenus()
+    {
+        MenuAberto = false;
+        NavOpen = false;
+    }
+
+    void AbrirPerfil()
+    {
+        MenuAberto = false;
+        ShowPerfil = true;
+    }
+
+    static RenderFragment EyeIcon(bool open) => open ? EyeOpen : EyeClosed;
+    static readonly RenderFragment EyeOpen = @<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>;
+    static readonly RenderFragment EyeClosed = @<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7c2 0 3.7.7 5.3 1.7M22 12s-3.5 7-10 7c-2 0-3.7-.7-5.3-1.7"/><path d="M3 3l18 18"/></svg>;
+}

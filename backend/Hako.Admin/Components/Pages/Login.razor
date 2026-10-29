@@ -1,0 +1,29 @@
+@page "/"
+@rendermode InteractiveServer
+@inject IConfiguration Config
+
+<PageTitle>Hako · Entrar</PageTitle>
+
+<div class="login-shell">
+    <div class="login-card">
+        <div class="login-logo">HAKO<span>INTERIORES</span><em>Marcenaria e Reformas</em></div>
+        <div class="login-admin">Hako<strong>Admin</strong></div>
+        <label class="fld">Usuário ou e-mail<input placeholder="admin" autocomplete="username"></label>
+        <label class="fld">Senha
+            <span class="pwd"><input type="@(Ver ? "text" : "password")" placeholder="••••••••" autocomplete="current-password"><button type="button" class="eye" @onclick="() => Ver = !Ver" title="@(Ver ? "Ocultar senha" : "Mostrar senha")">@EyeIcon(Ver)</button></span>
+        </label>
+        <a class="btn primary login-btn" href="./home">Entrar</a>
+        <a class="login-forgot" href="#">Esqueci a senha</a>
+        <a class="login-forgot login-site" href="@SiteUrl">↩ Voltar ao site</a>
+        <small class="muted">Acesso restrito à equipe Hako Interiores</small>
+    </div>
+</div>
+
+@code {
+    string SiteUrl => Config["SiteUrl"] ?? "/";
+    bool Ver;
+
+    static RenderFragment EyeIcon(bool open) => open ? EyeOpen : EyeClosed;
+    static readonly RenderFragment EyeOpen = @<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>;
+    static readonly RenderFragment EyeClosed = @<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7c2 0 3.7.7 5.3 1.7M22 12s-3.5 7-10 7c-2 0-3.7-.7-5.3-1.7"/><path d="M3 3l18 18"/></svg>;
+}

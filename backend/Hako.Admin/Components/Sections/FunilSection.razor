@@ -1,0 +1,62 @@
+<p class="hint">Arraste os cards entre as colunas para mover o lead no funil.</p>
+
+<div class="board-wrap">
+    <div class="board">
+        @foreach (var col in Colunas)
+        {
+            <div class="bcol @(DragOver == col ? "drop" : "")"
+                 @ondragover="() => DragOver = col" @ondragover:preventDefault
+                 @ondrop="() => Drop(col)" @ondragleave="() => DragOver = null">
+                <header>@col.Nome <span class="count">@col.Leads.Count</span></header>
+                @foreach (var l in col.Leads)
+                {
+                    <div class="kcard @(col.Nome is "Ganho" ? "h-ok" : col.Nome is "Perdido" ? "h-err" : "")"
+                         draggable="true" @ondragstart="() => Drag = (col, l)">
+                        <b>@l.Nome</b>
+                        <small>@l.Interesse</small>
+                        <small class="mono muted">@l.Tel</small>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+    @if (!IgnorarHint)
+    {
+        <div class="rotate-hint">
+            <span class="rot-ico">↻</span>
+            <p>Gire o dispositivo para visualizar o board</p>
+            <button type="button" class="btn" @onclick="() => IgnorarHint = true">Continuar assim mesmo</button>
+        </div>
+    }
+</div>
+
+@code {
+    record Lead(string Nome, string Interesse, string Tel);
+    class Col { public required string Nome; public List<Lead> Leads = []; }
+
+    (Col Col, Lead Lead)? Drag;
+    Col? DragOver;
+    bool IgnorarHint;
+
+    void Drop(Col destino)
+    {
+        if (Drag is { } d && d.Col != destino)
+        {
+            d.Col.Leads.Remove(d.Lead);
+            destino.Leads.Add(d.Lead);
+        }
+        Drag = null;
+        DragOver = null;
+    }
+
+    List<Col> Colunas =
+    [
+        new() { Nome = "Novo", Leads = [new("Fernanda Lira", "Cozinha", "(11) 96543-3300"), new("Juliana Matos", "Banheiro", "(11) 94321-5500"), new("Patrícia Gomes", "Living", "(11) 98865-1111")] },
+        new() { Nome = "Contato", Leads = [new("André Sales", "Dormitório", "(11) 91098-8800"), new("Loja Centro", "Balcão comercial", "(11) 3030-4040")] },
+        new() { Nome = "Visita/Medição", Leads = [new("Tiago Braga", "Cozinha + lavanderia", "(11) 97788-9900")] },
+        new() { Nome = "Orçamento", Leads = [new("Condomínio Vista", "Hall de entrada", "(11) 3444-5555"), new("Renata Piva", "Home office", "(11) 96677-8888")] },
+        new() { Nome = "Negociação", Leads = [new("Marcos Tuler", "Reforma completa", "(11) 95566-7777")] },
+        new() { Nome = "Ganho", Leads = [new("Camila Ferraz", "Home office", "(11) 90087-9900")] },
+        new() { Nome = "Perdido", Leads = [new("Otávio Reis", "Preço", "(11) 94455-6666")] },
+    ];
+}

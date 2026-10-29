@@ -37,3 +37,7 @@ cloudflared.exe
 # Editor swaps
 *.swp
 .cursor/
+
+# .NET build artifacts
+backend/**/bin/
+backend/**/obj/

@@ -197,4 +197,13 @@ document.addEventListener('DOMContentLoaded', () => {
             window.open(`https://wa.me/5511948854699?text=${encodeURIComponent(linhas.join('\n'))}`, '_blank', 'noopener');
         });
     }
+
+    // Links de admin quando há sessão (cookie-marcador gravado pelo app; só dica visual)
+    if (/(^|;\s*)hako_auth=1/.test(document.cookie)) {
+        const prefix = location.pathname.startsWith('/hako/') ? '/hako' : '';
+        const dash = document.getElementById('nav-dashboard');
+        const sair = document.getElementById('nav-sair');
+        if (dash) { dash.href = `${prefix}/dashboard`; dash.parentElement.hidden = false; }
+        if (sair) { sair.href = `${prefix}/dashboard/conta/sair`; sair.parentElement.hidden = false; }
+    }
 });

@@ -16,6 +16,18 @@ services:
       timeout: 5s
       retries: 3
 
+  hako-admin:
+    build:
+      context: ./backend/Hako.Admin
+    container_name: hako-admin
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - PathBase=/hako/dashboard
+      - SiteUrl=/hako/
+    networks:
+      - projetos-local
+    restart: unless-stopped
+
 networks:
   projetos-local:
     external: true

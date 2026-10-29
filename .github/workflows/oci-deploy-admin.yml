@@ -1,0 +1,225 @@
+name: oci-deploy-admin
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - 'deploy/**'
+      - '.github/workflows/oci-deploy-admin.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy-admin-ssh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check required SSH credentials
+        id: check_ssh
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY || vars.SSH_PRIVATE_KEY }}
+        run: |
+          missing=()
+          for v in SSH_HOST SSH_USER SSH_PRIVATE_KEY; do
+            if [ -z "${!v}" ]; then
+              missing+=("$v")
+            fi
+          done
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "has_ssh=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_ssh=false" >> $GITHUB_OUTPUT
+            echo "::error::Missing SSH secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Setup SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY || vars.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+        if: steps.check_ssh.outputs.has_ssh == 'true'
+
+      - name: Add remote host to known_hosts
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+        run: |
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+        if: steps.check_ssh.outputs.has_ssh == 'true'
+
+      - name: Upload backend and deploy files to OCI
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+        run: |
+          ssh "$SSH_USER@$SSH_HOST" "sudo mkdir -p /var/www/Hako/backend /var/www/Hako/deploy"
+          rsync -avz --delete \
+            --exclude "bin/" \
+            --exclude "obj/" \
+            --rsync-path="sudo rsync" \
+            ./backend/ "$SSH_USER@$SSH_HOST:/var/www/Hako/backend/"
+          rsync -avz --delete \
+            --rsync-path="sudo rsync" \
+            ./deploy/ "$SSH_USER@$SSH_HOST:/var/www/Hako/deploy/"
+        if: steps.check_ssh.outputs.has_ssh == 'true'
+
+      - name: Build and restart hako-admin container
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+        run: |
+          ssh "$SSH_USER@$SSH_HOST" 'bash -s' << 'EOF'
+            set -e
+            CONTAINER_NAME="hako-admin"
+            PROXY_CONTAINER="nginx-proxy"
+            PROXY_NET="www_projetos-net"
+
+            # A rede compartilhada é explícita; a ordem das redes do proxy varia.
+            sudo docker network inspect "$PROXY_NET" > /dev/null
+            PROXY_NETS=$(sudo docker inspect "$PROXY_CONTAINER" -f '{{range $net,$v := .NetworkSettings.Networks}}{{$net}}{{println}}{{end}}')
+            if ! printf '%s\n' "$PROXY_NETS" | grep -Fxq "$PROXY_NET"; then
+              echo "ERRO: Proxy não conectado à rede $PROXY_NET"
+              exit 1
+            fi
+
+            echo "Build da imagem hako-admin..."
+            sudo docker build -t hako-admin /var/www/Hako/backend/Hako.Admin
+
+            if sudo docker ps -a --format '{{.Names}}' | grep -Fxq "$CONTAINER_NAME"; then
+              echo "Removendo container antigo..."
+              sudo docker rm -f "$CONTAINER_NAME"
+            fi
+
+            echo "Subindo container $CONTAINER_NAME..."
+            sudo docker run -d --name "$CONTAINER_NAME" --restart unless-stopped \
+              -e PathBase=/dashboard \
+              -e SiteUrl=/ \
+              --network "$PROXY_NET" \
+              hako-admin
+
+            echo "Aguardando container iniciar..."
+            sleep 3
+
+            if ! sudo docker ps --filter "name=$CONTAINER_NAME" --filter "status=running" -q | grep -q .; then
+              echo "ERRO: Container $CONTAINER_NAME não está rodando!"
+              sudo docker logs "$CONTAINER_NAME" --tail 30
+              exit 1
+            fi
+
+            # Conectar somente à rede central esperada.
+            CURRENT_NETS=$(sudo docker inspect "$CONTAINER_NAME" -f '{{range $net,$v := .NetworkSettings.Networks}}{{$net}}{{println}}{{end}}')
+            if printf '%s\n' "$CURRENT_NETS" | grep -Fxq "$PROXY_NET"; then
+              echo "Container já conectado à rede $PROXY_NET"
+            else
+              echo "Conectando à rede $PROXY_NET..."
+              sudo docker network connect "$PROXY_NET" "$CONTAINER_NAME"
+            fi
+
+            echo "Deploy concluído. Status:"
+            sudo docker ps --filter "name=$CONTAINER_NAME" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+          EOF
+        if: steps.check_ssh.outputs.has_ssh == 'true'
+
+      - name: Install /dashboard location in nginx-proxy
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+        run: |
+          # O nginx-proxy usa um ARQUIVO ÚNICO (/var/www/nginx/nginx.conf montado
+          # ro em /etc/nginx/nginx.conf) — não há conf.d. O script idempotente
+          # deploy/install-dashboard-location.py insere o 'map $http_upgrade' no
+          # http{} e a 'location ^~ /dashboard' nos dois server{} do hako,
+          # seguindo o padrão 'set $upstream + proxy_pass $var' do arquivo.
+          ssh "$SSH_USER@$SSH_HOST" 'bash -s' << 'EOF'
+            set -e
+            CONF=/var/www/nginx/nginx.conf
+            PROXY_CONTAINER="nginx-proxy"
+            INSTALLER=/var/www/Hako/deploy/install-dashboard-location.py
+
+            if sudo grep -q 'location \^~ /dashboard' "$CONF" \
+               && sudo grep -q 'map \$http_upgrade' "$CONF"; then
+              echo "Location /dashboard já instalada no nginx.conf — nada a fazer."
+              exit 0
+            fi
+
+            BAK="$CONF.bak-$(date +%Y%m%d%H%M%S)-hako-admin"
+            sudo cp "$CONF" "$BAK"
+            echo "Backup criado: $BAK"
+
+            sudo python3 "$INSTALLER" "$CONF"
+
+            if sudo docker exec "$PROXY_CONTAINER" nginx -t; then
+              sudo docker exec "$PROXY_CONTAINER" nginx -s reload
+              echo "Location /dashboard instalada e nginx recarregado."
+            else
+              echo "nginx -t FALHOU — restaurando backup $BAK"
+              sudo cp "$BAK" "$CONF"
+              sudo docker exec "$PROXY_CONTAINER" nginx -t
+              echo "::error::Instalação da location falhou; nginx.conf restaurado a partir de $BAK"
+              exit 1
+            fi
+          EOF
+        if: steps.check_ssh.outputs.has_ssh == 'true'
+
+      - name: Health Check
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER || vars.SSH_USER }}
+        run: |
+          echo "Aguardando serviço estabilizar..."
+          sleep 5
+
+          # Teste interno (DNS do Docker só funciona dentro de containers)
+          ssh "$SSH_USER@$SSH_HOST" 'bash -s' << 'EOF'
+            CONTAINER_NAME="hako-admin"
+            PROXY_NET="www_projetos-net"
+
+            for i in 1 2 3 4 5; do
+              # 1) curl dentro do próprio container (imagem sdk inclui curl)
+              code=$(sudo docker exec "$CONTAINER_NAME" curl --max-time 5 -s -o /dev/null -w "%{http_code}" http://localhost:8080/dashboard 2>/dev/null || true)
+              # 2) wget como fallback
+              if [ -z "$code" ]; then
+                code=$(sudo docker exec "$CONTAINER_NAME" wget --timeout=5 -q -S -O /dev/null http://localhost:8080/dashboard 2>&1 | awk '/HTTP\//{c=$2} END{print c}' || true)
+              fi
+              # 3) container efêmero na rede compartilhada, testando o DNS hako-admin
+              if [ -z "$code" ]; then
+                code=$(sudo docker run --rm --network "$PROXY_NET" --entrypoint curl "$CONTAINER_NAME" --max-time 5 -s -o /dev/null -w "%{http_code}" http://hako-admin:8080/dashboard 2>/dev/null || true)
+              fi
+
+              echo "Teste interno (tentativa $i): HTTP ${code:-000}"
+              if [ "$code" = "200" ]; then
+                echo "Health check interno OK"
+                exit 0
+              fi
+              sleep 3
+            done
+
+            echo "ERRO: Health check interno falhou"
+            sudo docker logs "$CONTAINER_NAME" --tail 20
+            exit 1
+          EOF
+        if: steps.check_ssh.outputs.has_ssh == 'true'
+
+      - name: External Verification
+        run: |
+          echo "Verificando acesso externo..."
+          sleep 5
+          for i in 1 2 3; do
+            code=$(curl --max-time 10 -s -o /dev/null -w "%{http_code}" https://www.hakointeriores.com.br/dashboard || echo "000")
+            echo "Teste externo (tentativa $i): HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "Dashboard acessível externamente!"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::warning::/dashboard não retornou HTTP 200 externamente. Verifique se a location foi instalada no nginx-proxy e se o Cloudflare/DNS está OK."
+        continue-on-error: true
+        if: steps.check_ssh.outputs.has_ssh == 'true'

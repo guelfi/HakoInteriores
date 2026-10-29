@@ -1,0 +1,67 @@
+<div class="obra-head">
+    <label>Obra:</label>
+    <select>
+        <option>Cozinha planejada — Mariana Costa (Apt 402)</option>
+        <option>Dormitório planejado — Roberto Almeida</option>
+        <option>Banheiro completo — Beatriz Nunes</option>
+    </select>
+</div>
+<p class="hint">Arraste as etapas entre as colunas · cor = saúde do prazo: ⚪ a iniciar · 🟢 no prazo · 🟡 atenção · 🔴 atrasada · 🔵 concluída</p>
+
+<div class="board-wrap">
+    <div class="board kanban">
+        @foreach (var col in Colunas)
+        {
+            <div class="bcol @(DragOver == col ? "drop" : "")"
+                 @ondragover="() => DragOver = col" @ondragover:preventDefault
+                 @ondrop="() => Drop(col)" @ondragleave="() => DragOver = null">
+                <header>@col.Nome <span class="count">@col.Etapas.Count</span></header>
+                @foreach (var e in col.Etapas)
+                {
+                    <div class="kcard @e.Saude" draggable="true" @ondragstart="() => Drag = (col, e)">
+                        <b>@e.Nome</b>
+                        <small>@e.Resp</small>
+                        <small class="mono muted">prev: @e.Prev</small>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+    @if (!IgnorarHint)
+    {
+        <div class="rotate-hint">
+            <span class="rot-ico">↻</span>
+            <p>Gire o dispositivo para visualizar o board</p>
+            <button type="button" class="btn" @onclick="() => IgnorarHint = true">Continuar assim mesmo</button>
+        </div>
+    }
+</div>
+
+@code {
+    record Etapa(string Nome, string Resp, string Prev, string Saude);
+    class Col { public required string Nome; public List<Etapa> Etapas = []; }
+
+    (Col Col, Etapa Etapa)? Drag;
+    Col? DragOver;
+    bool IgnorarHint;
+
+    void Drop(Col destino)
+    {
+        if (Drag is { } d && d.Col != destino)
+        {
+            d.Col.Etapas.Remove(d.Etapa);
+            destino.Etapas.Add(d.Etapa);
+        }
+        Drag = null;
+        DragOver = null;
+    }
+
+    List<Col> Colunas =
+    [
+        new() { Nome = "A iniciar", Etapas = [new("Acabamento e limpeza", "Equipe", "10/11", "h-white")] },
+        new() { Nome = "Iniciada", Etapas = [new("Montagem/instalação", "João Marceneiro", "04/11", "h-green")] },
+        new() { Nome = "Em andamento", Etapas = [new("Produção marcenaria", "João Marceneiro", "30/10", "h-yellow"), new("Instalação pedras", "Marmoraria Itália", "28/10", "h-red")] },
+        new() { Nome = "Finalizada", Etapas = [new("Plano de corte", "Pedro Ajudante", "22/10", "h-blue")] },
+        new() { Nome = "Entregue", Etapas = [new("Medição no local", "João Marceneiro", "08/10", "h-blue"), new("Aprovação cliente", "Mariana Costa", "15/10", "h-blue")] },
+    ];
+}

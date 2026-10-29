@@ -1,0 +1,101 @@
+<div class="toolbar">
+    <div class="actions">
+        <button class="btn primary" @onclick="Novo">+ Nova obra</button>
+    </div>
+    <div class="pager">
+        <button disabled title="Início">⏮</button><button disabled title="Anterior">◀</button>
+        <span>1 / 1</span>
+        <button disabled title="Próximo">▶</button><button disabled title="Fim">⏭</button>
+    </div>
+</div>
+
+<div class="grid-card">
+    <table class="grid">
+        <thead><tr><th>Saúde</th><th>Obra</th><th class="hide-m">Cliente</th><th>Fase atual</th><th>Progresso</th><th class="hide-m">Previsão</th></tr></thead>
+        <tbody>
+            @foreach (var o in Rows)
+            {
+                <tr @onclick="() => Editar(o)">
+                    <td><i class="dot @o.Saude" title="@o.SaudeDesc"></i></td>
+                    <td>@o.Tipo</td>
+                    <td class="hide-m">@o.Cliente</td>
+                    <td>@o.Fase</td>
+                    <td>
+                        <div class="pbar"><i style="--p:@o.Pct"></i></div>
+                        <small class="muted">@o.Pct%</small>
+                    </td>
+                    <td class="mono hide-m">@o.Prev</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (Form is not null)
+{
+    <div class="modal-back" @onclick="Fechar">
+        <div class="modal" @onclick:stopPropagation>
+            <h3>@(IsNew ? "Nova obra" : "Obra")</h3>
+            <label class="fld">Tipo de serviço
+                <select @bind="Form.Tipo">
+                    <option>Cozinha planejada</option><option>Dormitório planejado</option>
+                    <option>Banheiro completo</option><option>Reforma completa</option><option>Home office</option>
+                </select>
+            </label>
+            <label class="fld">Cliente
+                <select @bind="Form.Cliente">
+                    <option>Mariana Costa</option><option>Roberto Almeida</option>
+                    <option>Camila Ferraz</option><option>Beatriz Nunes</option>
+                </select>
+            </label>
+            <div class="fld-row">
+                <label class="fld">Fase atual
+                    <select @bind="Form.Fase">
+                        <option>Medição</option><option>Projeto</option><option>Produção</option>
+                        <option>Montagem</option><option>Acabamento</option><option>Entrega</option>
+                    </select>
+                </label>
+                <label class="fld">Previsão<input @bind="Form.Prev" placeholder="dd/mm/aaaa"></label>
+            </div>
+            @if (Cancelando)
+            {
+                <label class="fld">Justificativa do cancelamento (obrigatória)
+                    <textarea rows="2" placeholder="Motivo do cancelamento da obra"></textarea>
+                </label>
+            }
+            <div class="actions end">
+                <button class="btn" @onclick="Fechar">Voltar</button>
+                @if (!IsNew && !Cancelando) { <button class="btn danger" @onclick="() => Cancelando = true">Cancelar obra</button> }
+                @if (Cancelando) { <button class="btn danger" @onclick="Fechar">Confirmar cancelamento</button> }
+                <button class="btn primary" @onclick="Salvar">Salvar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    class Obra
+    {
+        public int Id; public string Tipo = ""; public string Cliente = ""; public string Fase = "";
+        public int Pct; public string Prev = ""; public string Saude = "s-ok"; public string SaudeDesc = "";
+    }
+
+    List<Obra> Rows =
+    [
+        new() { Id = 1, Tipo = "Cozinha planejada", Cliente = "Mariana Costa", Fase = "Produção", Pct = 55, Prev = "15/11/2026", Saude = "s-warn", SaudeDesc = "1 etapa amarela" },
+        new() { Id = 2, Tipo = "Painel living", Cliente = "Mariana Costa", Fase = "Montagem", Pct = 82, Prev = "02/11/2026", Saude = "s-err", SaudeDesc = "Etapa em atraso" },
+        new() { Id = 3, Tipo = "Dormitório planejado", Cliente = "Roberto Almeida", Fase = "Projeto", Pct = 30, Prev = "10/12/2026", Saude = "s-ok", SaudeDesc = "No prazo" },
+        new() { Id = 4, Tipo = "Home office", Cliente = "Camila Ferraz", Fase = "Medição", Pct = 12, Prev = "20/12/2026", Saude = "s-ok", SaudeDesc = "No prazo" },
+        new() { Id = 5, Tipo = "Banheiro completo", Cliente = "Beatriz Nunes", Fase = "Acabamento", Pct = 90, Prev = "28/10/2026", Saude = "s-err", SaudeDesc = "Atrasada 3 dias" },
+        new() { Id = 6, Tipo = "Closet planejado", Cliente = "Beatriz Nunes", Fase = "Produção", Pct = 48, Prev = "05/12/2026", Saude = "s-ok", SaudeDesc = "No prazo" },
+    ];
+
+    Obra? Form;
+    bool IsNew;
+    bool Cancelando;
+
+    void Novo() { Form = new Obra(); IsNew = true; Cancelando = false; }
+    void Editar(Obra o) { Form = o; IsNew = false; Cancelando = false; }
+    void Fechar() { Form = null; Cancelando = false; }
+    void Salvar() { if (IsNew) { Form!.Id = Rows.Count + 1; Rows.Insert(0, Form!); } Fechar(); }
+}

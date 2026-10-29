@@ -1,0 +1,105 @@
+<div class="toolbar">
+    <div class="actions">
+        <button class="btn primary" @onclick="Novo">+ Novo cliente</button>
+    </div>
+    <div class="pager">
+        <button @onclick="() => Page = 0" disabled="@(Page == 0)" title="Início">⏮</button>
+        <button @onclick="() => Page--" disabled="@(Page == 0)" title="Anterior">◀</button>
+        <span>@(Page + 1) / @Pages</span>
+        <button @onclick="() => Page++" disabled="@(Page >= Pages - 1)" title="Próximo">▶</button>
+        <button @onclick="() => Page = Pages - 1" disabled="@(Page >= Pages - 1)" title="Fim">⏭</button>
+    </div>
+</div>
+
+<div class="grid-card">
+    <table class="grid">
+        <thead>
+            <tr><th>Status</th><th>Obras</th><th>Nome</th><th class="hide-m">Celular</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var c in Rows.Skip(Page * Size).Take(Size))
+            {
+                <tr @onclick="() => Editar(c)">
+                    <td>
+                        <span class="badge @(c.IsLead ? "b-lead" : "b-cliente")">@(c.IsLead ? "Lead" : "Cliente")</span>
+                        <i class="dot @(c.Ativo ? "on" : "off")" title="@(c.Ativo ? "Ativo" : "Inativo")"></i>
+                    </td>
+                    <td>
+                        @if (c.Obras == 0)
+                        {
+                            <span class="muted">—</span>
+                        }
+                        else
+                        {
+                            <span class="obra-ico" title="@c.ObraDesc">@c.ObraIcon @(c.Obras > 1 ? $"×{c.Obras}" : "")</span>
+                            @if (c.Atrasada) { <span class="badge b-err" title="Etapa em atraso">atraso</span> }
+                        }
+                    </td>
+                    <td>@c.Nome</td>
+                    <td class="mono hide-m">@c.Celular</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (Form is not null)
+{
+    <div class="modal-back" @onclick="Fechar">
+        <div class="modal" @onclick:stopPropagation>
+            <h3>@(IsNew ? "Novo cliente" : "Cliente")</h3>
+            <label class="fld">Nome completo<input @bind="Form.Nome"></label>
+            <label class="fld">Celular<input @bind="Form.Celular" placeholder="(11) 9xxxx-xxxx"></label>
+            <label class="fld">Tipo
+                <select @bind="Form.IsLead"><option value="false">Cliente</option><option value="true">Lead</option></select>
+            </label>
+            <label class="fld chk"><input type="checkbox" @bind="Form.Ativo"> Ativo</label>
+            <div class="actions end">
+                <button class="btn" @onclick="Fechar">Cancelar</button>
+                @if (!IsNew) { <button class="btn danger" @onclick="Inativar">Inativar</button> }
+                <button class="btn primary" @onclick="Salvar">Salvar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    class Cli
+    {
+        public int Id; public string Nome = ""; public string Celular = "";
+        public bool IsLead; public bool Ativo = true;
+        public int Obras; public string ObraIcon = ""; public string ObraDesc = ""; public bool Atrasada;
+    }
+
+    List<Cli> Rows =
+    [
+        new() { Id = 1, Nome = "Mariana Costa", Celular = "(11) 98765-1100", Obras = 2, ObraIcon = "🛠", ObraDesc = "Cozinha apto 402 · Painel living", Atrasada = true },
+        new() { Id = 2, Nome = "Roberto Almeida", Celular = "(11) 97654-2200", Obras = 1, ObraIcon = "🛠", ObraDesc = "Dormitório planejado" },
+        new() { Id = 3, Nome = "Fernanda Lira", Celular = "(11) 96543-3300", IsLead = true },
+        new() { Id = 4, Nome = "Paulo Henrique", Celular = "(11) 95432-4400", Obras = 1, ObraIcon = "✓", ObraDesc = "Banheiro — entregue 10/2026" },
+        new() { Id = 5, Nome = "Juliana Matos", Celular = "(11) 94321-5500", IsLead = true },
+        new() { Id = 6, Nome = "Carlos Drumond", Celular = "(11) 93210-6600", Ativo = false, Obras = 1, ObraIcon = "✗", ObraDesc = "Reforma sala — cancelada" },
+        new() { Id = 7, Nome = "Beatriz Nunes", Celular = "(11) 92109-7700", Obras = 3, ObraIcon = "🛠", ObraDesc = "2 em andamento · 1 entregue", Atrasada = true },
+        new() { Id = 8, Nome = "André Sales", Celular = "(11) 91098-8800", IsLead = true, Ativo = false },
+        new() { Id = 9, Nome = "Camila Ferraz", Celular = "(11) 90087-9900", Obras = 1, ObraIcon = "🛠", ObraDesc = "Home office planejado" },
+        new() { Id = 10, Nome = "Diego Ramos", Celular = "(11) 99976-1010", Obras = 2, ObraIcon = "✓", ObraDesc = "Cozinha + banheiro entregues" },
+        new() { Id = 11, Nome = "Patrícia Gomes", Celular = "(11) 98865-1111", IsLead = true },
+        new() { Id = 12, Nome = "Tiago Braga", Celular = "(11) 97788-9900", IsLead = true },
+        new() { Id = 13, Nome = "Renata Piva", Celular = "(11) 96677-8888", IsLead = true },
+        new() { Id = 14, Nome = "Marcos Tuler", Celular = "(11) 95566-7777", Obras = 1, ObraIcon = "🛠", ObraDesc = "Reforma completa — negociação" },
+        new() { Id = 15, Nome = "Otávio Reis", Celular = "(11) 94455-6666", Ativo = false },
+    ];
+
+    const int Size = 10;
+    int Page;
+    Cli? Form;
+    bool IsNew;
+
+    int Pages => Math.Max(1, (int)Math.Ceiling(Rows.Count / (double)Size));
+
+    void Novo() { Form = new Cli(); IsNew = true; }
+    void Editar(Cli c) { Form = c; IsNew = false; }
+    void Fechar() => Form = null;
+    void Salvar() { if (IsNew) { Form!.Id = Rows.Count + 1; Rows.Insert(0, Form!); } Fechar(); }
+    void Inativar() { Form!.Ativo = false; Fechar(); }
+}

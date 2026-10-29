@@ -1,0 +1,88 @@
+<div class="toolbar">
+    <div class="actions">
+        <button class="btn primary" @onclick="Novo">+ Nova pessoa</button>
+    </div>
+    <div class="pager">
+        <button disabled title="Início">⏮</button><button disabled title="Anterior">◀</button>
+        <span>1 / 1</span>
+        <button disabled title="Próximo">▶</button><button disabled title="Fim">⏭</button>
+    </div>
+</div>
+
+<div class="grid-card">
+    <table class="grid">
+        <thead><tr><th>Perfil</th><th>Nome</th><th class="hide-m">Função / Especialidade</th><th class="hide-m">Celular</th><th class="hide-m">Comissão</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var p in Rows)
+            {
+                <tr @onclick="() => Editar(p)">
+                    <td><span class="badge @p.Badge">@p.Perfil</span></td>
+                    <td>@p.Nome <i class="dot @(p.Ativo ? "on" : "off")" title="@(p.Ativo ? "Ativo" : "Inativo")"></i></td>
+                    <td class="hide-m">@p.Funcao</td>
+                    <td class="mono hide-m">@p.Celular</td>
+                    <td class="hide-m">@(p.Comissao is null ? "—" : $"{p.Comissao}%")</td>
+                    <td></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (Form is not null)
+{
+    <div class="modal-back" @onclick="Fechar">
+        <div class="modal" @onclick:stopPropagation>
+            <h3>@(IsNew ? "Nova pessoa" : "Pessoa")</h3>
+            <label class="fld">Perfil
+                <select @bind="Form.Perfil">
+                    <option>Funcionário</option><option>Colaborador</option><option>Parceiro</option>
+                </select>
+            </label>
+            <label class="fld">Nome<input @bind="Form.Nome"></label>
+            <label class="fld">Função / Especialidade<input @bind="Form.Funcao"></label>
+            <div class="fld-row">
+                <label class="fld">Celular<input @bind="Form.Celular" placeholder="(11) 9xxxx-xxxx"></label>
+                @if (Form.Perfil == "Parceiro")
+                {
+                    <label class="fld">Comissão %<input @bind="Form.ComissaoTxt" placeholder="10"></label>
+                }
+            </div>
+            <label class="fld chk"><input type="checkbox" @bind="Form.Ativo"> Ativo</label>
+            <div class="actions end">
+                <button class="btn" @onclick="Fechar">Cancelar</button>
+                @if (!IsNew) { <button class="btn danger" @onclick="Inativar">Inativar</button> }
+                <button class="btn primary" @onclick="Salvar">Salvar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    class Pessoa
+    {
+        public int Id; public string Perfil = "Funcionário"; public string Nome = ""; public string Funcao = "";
+        public string Celular = ""; public int? Comissao; public bool Ativo = true;
+        public string Badge => Perfil switch { "Colaborador" => "b-colab", "Parceiro" => "b-parc", _ => "b-func" };
+        public string ComissaoTxt { get => Comissao?.ToString() ?? ""; set => Comissao = int.TryParse(value, out var v) ? v : null; }
+    }
+
+    List<Pessoa> Rows =
+    [
+        new() { Id = 1, Perfil = "Funcionário", Nome = "João Marceneiro", Funcao = "Marceneiro sênior", Celular = "(11) 91111-0001" },
+        new() { Id = 2, Perfil = "Funcionário", Nome = "Pedro Ajudante", Funcao = "Ajudante de obras", Celular = "(11) 92222-0002" },
+        new() { Id = 3, Perfil = "Colaborador", Nome = "Marcos Eletricista", Funcao = "Elétrica", Celular = "(11) 93333-0003" },
+        new() { Id = 4, Perfil = "Colaborador", Nome = "Luiz Gesseiro", Funcao = "Gesso e drywall", Celular = "(11) 94444-0004", Ativo = false },
+        new() { Id = 5, Perfil = "Parceiro", Nome = "Arq. Sofia Ribeiro", Funcao = "Arquiteta — projetos", Celular = "(11) 95555-0005", Comissao = 12 },
+        new() { Id = 6, Perfil = "Parceiro", Nome = "Eng. Ricardo Paz", Funcao = "Engenheiro — estrutural", Celular = "(11) 96666-0006", Comissao = 8 },
+        new() { Id = 7, Perfil = "Parceiro", Nome = "Marmoraria Itália", Funcao = "Fornecedor — pedras", Celular = "(11) 97777-0007", Comissao = 5 },
+    ];
+
+    Pessoa? Form;
+    bool IsNew;
+
+    void Novo() { Form = new Pessoa(); IsNew = true; }
+    void Editar(Pessoa p) { Form = p; IsNew = false; }
+    void Fechar() => Form = null;
+    void Salvar() { if (IsNew) { Form!.Id = Rows.Count + 1; Rows.Insert(0, Form!); } Fechar(); }
+    void Inativar() { Form!.Ativo = false; Fechar(); }
+}

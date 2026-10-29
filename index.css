@@ -132,6 +132,7 @@ header .container { display: flex; align-items: center; justify-content: space-b
 }
 
 .nav-links { display: flex; gap: 28px; align-items: center; }
+.nav-admin a { color: var(--accent-color) !important; }
 .nav-links a {
     color: var(--white);
     font-size: 14px;
