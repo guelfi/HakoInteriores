@@ -264,3 +264,9 @@ html,body{height:100%;overflow:hidden}
 @media(max-width:820px) and (orientation:landscape){
   .board-wrap{min-height:calc(100dvh - 170px)}
 }
+
+/* ===== ajustes (r6): obras por fase em 2 linhas ===== */
+.fases{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px}
+.fase{min-width:0}
+.fase span{white-space:normal;overflow:visible;text-overflow:clip}
+.fase i{width:auto;flex:1}
