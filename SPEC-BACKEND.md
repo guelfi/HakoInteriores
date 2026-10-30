@@ -198,14 +198,19 @@ Campos: id, nome, celular, email?, enderecoObra?, cpfCnpj? (só cliente — LGPD
 
 ## Funil — modelo por NEGOCIAÇÃO (preview aprovado no brainstorm)
 
+Propósito: funil **básico por design** — visualização fácil e rápida da situação; objetivo é ajudar a converter lead em cliente, não ser um CRM pesado.
+
 Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociações (1ª obra, obra nova, reforma futura).
-- Pessoa `tipo=lead` só na 1ª negociação; ao Ganho+contrato assinado → vira `cliente` e **nunca retorna a lead**
+- **Status da Negociacao:** `em_andamento` | `cancelada` | `fechada` (independente do estágio/coluna)
+- Pessoa `tipo=lead` vira `cliente` **quando a negociação é fechada** (acordo comercial) — e **nunca retorna a lead**
+- **Ganho ≠ fechada:** o card só entra na coluna Ganho **depois do contrato assinado** — negociação fechada aguardando assinatura permanece na coluna Negociação com status `fechada`
+- Cancelada: sai do fluxo ativo p/ Perdido/arquivo com motivoPerda obrigatório
 - Cliente existente entrando em nova negociação aparece no board com badge "★ cliente" — mesmo funil, visual distinto
 - Funil mede conversão em dois níveis: lead→cliente (1ª vez) e proposta→contrato (recorrente)
-- Negociacao: id, pessoaId, estagio, tipoServico?, valor?, origem, motivoPerda?, criadoEm, ganhoEm? → no Ganho cria Obra (etapas-template)
+- Negociacao: id, pessoaId, estagio, status, tipoServico?, valor?, origem, motivoPerda?, criadoEm, fechadaEm?, ganhoEm? → no Ganho cria Obra (etapas-template)
 
 ### Clientes — card CRUD (UI)
-- tipo = badge readonly derivado (lead→cliente só via contrato; carga legada = fase posterior/Admin)
+- tipo = badge readonly derivado (lead→cliente só via negociação fechada; carga legada = fase posterior/Admin)
 - obrigatórios: nome*, celular* (máscara); opcionais: email, enderecoObra, origem, observações
 - cpfCnpj só visível/obrigatório quando tipo=cliente (minimização LGPD em leads)
 - alteração de status no card: select + motivo obrigatório p/ inativo|cancelado
