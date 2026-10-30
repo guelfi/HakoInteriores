@@ -42,7 +42,7 @@
                 {
                     <div class="menu">
                         <button class="menu-item" @onclick="AbrirPerfil">◉ Editar perfil</button>
-                        <a class="menu-item" href="./">⎋ Sair</a>
+                        <a class="menu-item" href="@($"{BasePath}/")">⎋ Sair</a>
                     </div>
                 }
             </div>
@@ -94,6 +94,7 @@
     bool NavOpen;
     bool Ver1, Ver2;
     string SiteUrl => Config["SiteUrl"] ?? "/";
+    string BasePath => (Config["PathBase"] ?? "/dashboard").TrimEnd('/');
 
     string AvatarInitials => Store.CurrentRole switch
     {

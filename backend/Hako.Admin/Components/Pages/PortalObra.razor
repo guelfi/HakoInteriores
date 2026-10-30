@@ -1,5 +1,6 @@
 @page "/obra/{Token}"
 @rendermode InteractiveServer
+@inject IConfiguration Config
 @inject MockErpStore Store
 @inject NavigationManager Nav
 
@@ -31,7 +32,7 @@
                         <option value="@c.PortalToken">@c.Nome</option>
                     }
                 </select>
-                <a href="./" class="btn" style="padding:6px 12px;font-size:12.5px">⎋ Sair</a>
+                <a href="@($"{BasePath}/")" class="btn" style="padding:6px 12px;font-size:12.5px">⎋ Sair</a>
             </div>
         </div>
     </header>
@@ -433,6 +434,8 @@
         Store.Clientes.FirstOrDefault(c => string.Equals(c.PortalToken, Token, StringComparison.OrdinalIgnoreCase))
         ?? Store.Clientes.First();
 
+    private string BasePath => (Config["PathBase"] ?? "/dashboard").TrimEnd('/');
+
     private void TrocarClienteDemo(ChangeEventArgs e)
     {
         var novoToken = e.Value?.ToString();
@@ -441,7 +444,7 @@
             ShowGarantiaForm = false;
             ContratoVisualizado = null;
             FeedbackPortal = "";
-            Nav.NavigateTo($"obra/{novoToken}");
+            Nav.NavigateTo($"{BasePath}/obra/{novoToken}");
         }
     }
 

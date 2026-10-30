@@ -7,7 +7,7 @@
 <PageTitle>Hako · Entrar</PageTitle>
 
 <div class="login-shell">
-    <form class="login-card" @onsubmit="Entrar" @onsubmit:preventDefault>
+    <div class="login-card" @onkeydown="OnKeyDown">
         <div class="login-logo">HAKO<span>INTERIORES</span><em>Marcenaria e Reformas</em></div>
         <div class="login-admin">Hako<strong>Admin</strong></div>
 
@@ -29,19 +29,26 @@
             <small style="color:var(--err,#c0392b);text-align:center;font-weight:600">@ErroMsg</small>
         }
 
-        <button type="submit" class="btn primary login-btn">Entrar</button>
+        <button type="button" class="btn primary login-btn" @onclick="Entrar">Entrar</button>
         <a class="login-forgot" href="#">Esqueci a senha</a>
         <a class="login-forgot login-site" href="@SiteUrl">↩ Voltar ao site</a>
         <small class="muted">Acesso restrito à equipe Hako Interiores</small>
-    </form>
+    </div>
 </div>
 
 @code {
     string SiteUrl => Config["SiteUrl"] ?? "/";
+    string BasePath => (Config["PathBase"] ?? "/dashboard").TrimEnd('/');
     string UsuarioInput = "";
     string SenhaInput = "";
     string? ErroMsg;
     bool Ver;
+
+    void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            Entrar();
+    }
 
     void Entrar()
     {
@@ -52,7 +59,7 @@
 
         if (raw is "clientes" or "cliente")
         {
-            Nav.NavigateTo("obra/mcosta-402-a8f3k2m9x7");
+            Nav.NavigateTo($"{BasePath}/obra/mcosta-402-a8f3k2m9x7");
             return;
         }
 
@@ -75,7 +82,7 @@
         Store.CurrentRole = role;
         Store.ActiveSection = "dash";
         Store.NotifyStateChanged();
-        Nav.NavigateTo("home");
+        Nav.NavigateTo($"{BasePath}/home");
     }
 
     static RenderFragment EyeIcon(bool open) => open ? EyeOpen : EyeClosed;
