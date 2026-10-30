@@ -1,22 +1,101 @@
-<p class="hint">Arraste ou toque num card e depois na coluna de destino.</p>
+@inject MockErpStore Store
+
+<div class="toolbar" style="margin-bottom:10px">
+    <div class="actions" style="flex-wrap:wrap;align-items:center;gap:8px">
+        <select class="flt-sel" @bind="FiltroServico">
+            <option value="todos">Serviço / Categoria: Todos</option>
+            <option value="cat:mobiliario">Categoria: Mobiliário Planejado</option>
+            <option value="cat:alvenaria">Categoria: Alvenaria &amp; Reforma</option>
+            @foreach (var ts in Store.TiposServico)
+            {
+                <option value="id:@ts.Id">@ts.Nome</option>
+            }
+        </select>
+
+        <div class="journey-toggle">
+            <button class="jt-btn @(FiltroJornada == "todos" ? "on" : "")" @onclick='() => FiltroJornada = "todos"'>Todos</button>
+            <button class="jt-btn @(FiltroJornada == "leads" ? "on" : "")" @onclick='() => FiltroJornada = "leads"'>Só Leads (1º contrato)</button>
+            <button class="jt-btn @(FiltroJornada == "clientes" ? "on" : "")" @onclick='() => FiltroJornada = "clientes"'>★ Só Clientes (Recorrência)</button>
+        </div>
+
+        <select class="flt-sel" @bind="FiltroPeriodoGanhoPerdido" title="Período exibido nas colunas Ganho e Perdido">
+            <option value="mes">Ganho/Perdido: Mês vigente (Out/2026)</option>
+            <option value="trimestre">Ganho/Perdido: Trimestre</option>
+            <option value="ano">Ganho/Perdido: Ano 2026</option>
+            <option value="tudo">Ganho/Perdido: Tudo</option>
+        </select>
+    </div>
+
+    @if (ActiveCard is not null)
+    {
+        <div style="display:flex;align-items:center;gap:8px">
+            <span class="badge b-ok">Card #@ActiveCard.Id selecionado — clique na coluna verde adjacente ou em Perdido</span>
+            <button class="btn" style="padding:4px 9px;font-size:12px" @onclick="LimparSelecao">Cancelar seleção</button>
+        </div>
+    }
+</div>
+
+@if (!string.IsNullOrWhiteSpace(BannerMsg))
+{
+    <div class="funil-banner @(BannerErro ? "err" : "ok")">
+        <span>@BannerMsg</span>
+        <button class="btn" style="padding:2px 8px;font-size:11px" @onclick='() => BannerMsg = ""'>✕</button>
+    </div>
+}
+
+<p class="hint" style="margin-bottom:10px">
+    Arraste ou toque num card para avançar: <strong>apenas a próxima coluna adjacente e "Perdido" ficam habilitadas (verde)</strong>. Cada avanço registra a ação operacional na Aba 3 do Cliente.
+</p>
 
 <div class="board-wrap">
     <div class="board">
-        @foreach (var col in Colunas)
+        @foreach (var colNome in Estagios)
         {
-            <div class="bcol @(DragOver == col || (Sel is not null && Sel.Value.Col != col) ? "drop" : "")"
-                 @onclick="() => ToqueCol(col)"
-                 @ondragover="() => DragOver = col" @ondragover:preventDefault
-                 @ondrop="() => Drop(col)" @ondragleave="() => DragOver = null">
-                <header>@col.Nome <span class="count">@col.Leads.Count</span></header>
-                @foreach (var l in col.Leads)
+            var cards = GetCardsColuna(colNome);
+            var stateCls = GetColAffordanceClass(colNome);
+            <div class="bcol @stateCls @(DragOverCol == colNome ? "drop" : "")"
+                 @onclick="() => OnClickColuna(colNome)"
+                 @ondragover="() => DragOverCol = colNome" @ondragover:preventDefault
+                 @ondrop="() => OnDropColuna(colNome)" @ondragleave="() => DragOverCol = null">
+                <header>
+                    <span>@colNome</span>
+                    <span class="count">@cards.Count</span>
+                </header>
+
+                @foreach (var n in cards)
                 {
-                    <div class="kcard @(col.Nome is "Ganho" ? "h-ok" : col.Nome is "Perdido" ? "h-err" : "") @(Sel?.Lead == l ? "picked" : "")"
-                         draggable="true" @ondragstart="() => Drag = (col, l)"
-                         @onclick="() => ToqueCard(col, l)" @onclick:stopPropagation>
-                        <b>@l.Nome</b>
-                        <small>@l.Interesse</small>
-                        <small class="mono muted">@l.Tel</small>
+                    var cli = Store.GetCliente(n.ClienteId);
+                    var ts = Store.GetTipoServico(n.TipoServicoId);
+                    var isLead = cli?.IsLead ?? true;
+                    var alertaParado = n.ParadoDias >= Store.FunilDiasAlertaParado && colNome is not ("Ganho" or "Perdido");
+                    var cardBorder = colNome == "Ganho" ? "h-ok" : colNome == "Perdido" ? "h-err" : alertaParado ? "h-yellow" : "h-blue";
+
+                    <div class="kcard @cardBorder @(Sel?.Id == n.Id ? "picked" : "")"
+                         draggable="@(Store.HasPerm("funil.edit") && colNome is not ("Ganho" or "Perdido") ? "true" : "false")"
+                         @ondragstart="() => OnDragStart(n)"
+                         @onclick="() => OnClickCard(n)" @onclick:stopPropagation>
+
+                        <div style="display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:wrap">
+                            <span class="badge @(isLead ? "b-lead" : "b-cliente")" style="font-size:9.5px;padding:2px 6px">
+                                @(isLead ? "Lead → 1º contrato" : "★ Cliente → novo contrato")
+                            </span>
+                            @if (alertaParado)
+                            {
+                                <span class="badge b-warn" style="font-size:9.5px;padding:2px 6px" title="Acima do limite configurado em ConfigSistema">
+                                    ⚠ parado há @(n.ParadoDias)d
+                                </span>
+                            }
+                        </div>
+
+                        <b style="margin-top:2px">@(cli?.Nome ?? $"Cliente #{n.ClienteId}")</b>
+                        <small style="color:var(--text);font-weight:500">@(ts?.Nome ?? "Serviço")</small>
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px">
+                            <small class="mono"><strong>@MockErpStore.FormatMoeda(n.ValorEstimado)</strong></small>
+                            <button class="btn-link-mini" title="Ver resumo somente-leitura e atalho para Aba 3"
+                                    @onclick="() => AbrirResumoCard(n)" @onclick:stopPropagation>
+                                🔍 Aba 3
+                            </button>
+                        </div>
                     </div>
                 }
             </div>
@@ -24,49 +103,677 @@
     </div>
     <div class="rotate-hint">
         <span class="rot-ico">↻</span>
-        <p>Gire o dispositivo para visualizar o board</p>
+        <p>Gire o dispositivo para visualizar o board do Funil</p>
     </div>
 </div>
 
+@* ==================== MODAL SOMENTE-LEITURA DE RESUMO DO CARD ==================== *@
+@if (ResumoNeg is not null)
+{
+    var cli = Store.GetCliente(ResumoNeg.ClienteId);
+    var ts = Store.GetTipoServico(ResumoNeg.TipoServicoId);
+    var ultVis = ResumoNeg.Visitas.LastOrDefault();
+    var ultOrc = ResumoNeg.Orcamentos.LastOrDefault();
+    <div class="modal-back" @onclick="() => ResumoNeg = null">
+        <div class="modal" style="width:min(520px,95vw)" @onclick:stopPropagation>
+            <div style="display:flex;justify-content:space-between;align-items:center">
+                <h3 style="margin:0">Resumo do Card #@ResumoNeg.Id (Somente Leitura)</h3>
+                <button class="btn" @onclick="() => ResumoNeg = null">✕</button>
+            </div>
+            <div class="sub-box">
+                <div>
+                    <span class="badge @((cli?.IsLead ?? true) ? "b-lead" : "b-cliente")">
+                        @((cli?.IsLead ?? true) ? "Lead → 1º contrato" : "★ Cliente → novo contrato")
+                    </span>
+                    <span class="badge b-info" style="margin-left:6px">Estágio: @ResumoNeg.Estagio</span>
+                </div>
+                <div><strong>Pessoa:</strong> @(cli?.Nome) · <span class="mono">@(cli?.Celular)</span></div>
+                <div><strong>Tipo de Serviço:</strong> @(ts?.Nome) (@(ts?.Categoria))</div>
+                <div><strong>Valor Estimado:</strong> <span class="mono">@MockErpStore.FormatMoeda(ResumoNeg.ValorEstimado)</span></div>
+                <div><strong>Última Visita/Medição:</strong> @(ultVis is not null ? $"{ultVis.Status} ({ultVis.DataAgendada}) — {ultVis.Medicoes}" : "Nenhuma registrada")</div>
+                <div><strong>Último Orçamento:</strong> @(ultOrc is not null ? $"v{ultOrc.Versao} ({ultOrc.Status.ToUpper()}) — {MockErpStore.FormatMoeda(ultOrc.Valor)}" : "Nenhum enviado")</div>
+            </div>
+            <small class="muted">O Funil não edita dados diretamente. Toda edição detalhada de medições, propostas e documentos ocorre na Aba 3 do cadastro do Cliente.</small>
+            <div class="actions end">
+                <button class="btn" @onclick="() => ResumoNeg = null">Fechar</button>
+                <button class="btn primary" @onclick="IrParaClientesAba3">Abrir Cadastro em Clientes (Aba 3) →</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ==================== MODAIS DE AÇÃO OBRIGATÓRIA POR TRANSIÇÃO ==================== *@
+@if (TransicaoNeg is not null && !string.IsNullOrWhiteSpace(TransicaoDestino))
+{
+    var cli = Store.GetCliente(TransicaoNeg.ClienteId);
+    var ts = Store.GetTipoServico(TransicaoNeg.TipoServicoId);
+
+    <div class="modal-back" @onclick="CancelarTransicao">
+        <div class="modal" style="width:min(600px,96vw);max-height:90vh;overflow-y:auto" @onclick:stopPropagation>
+            <h3>Avançar Card #@TransicaoNeg.Id: @TransicaoNeg.Estagio → @TransicaoDestino</h3>
+            <div style="font-size:13px;color:var(--muted);margin-top:-6px">
+                <strong>@(cli?.Nome)</strong> · @(ts?.Nome)
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(ModalErro))
+            {
+                <div class="funil-banner err">@ModalErro</div>
+            }
+
+            @* 1. NOVO -> CONTATO *@
+            @if (TransicaoDestino == "Contato")
+            {
+                <div class="sub-box">
+                    <p style="margin:0;font-size:13.5px">
+                        <strong>Confirma que o primeiro contato com este lead foi realizado?</strong>
+                    </p>
+                    <label class="fld">Resumo do Contato Inicial (vai para a Timeline na Aba 3)
+                        <input @bind="TContatoObs" placeholder="Ex.: Contato via WhatsApp; cliente confirmou interesse em visita técnica." />
+                    </label>
+                </div>
+            }
+
+            @* 2. CONTATO -> VISITA/MEDIÇÃO *@
+            else if (TransicaoDestino == "Visita/Medição")
+            {
+                <div class="sub-box">
+                    <p style="margin:0;font-size:13px"><strong>Agendar Visita Técnica / Medição (registra na Aba 3):</strong></p>
+                    <label class="fld">Data e Hora Agendada *
+                        <input @bind="TVisitaData" placeholder="Ex.: 01/11/2026 14:30" />
+                    </label>
+                    <label class="fld">Observações para a Visita
+                        <textarea rows="2" @bind="TVisitaObs" placeholder="Endereço confirmado, levar mostruário de MDF e trena laser..."></textarea>
+                    </label>
+                </div>
+            }
+
+            @* 3. VISITA/MEDIÇÃO -> ORÇAMENTO *@
+            else if (TransicaoDestino == "Orçamento")
+            {
+                <div class="sub-box">
+                    <div class="sec-sub">1. Confirmação das Medições da Visita (Alimenta <code>{{medicao.*}}</code>)</div>
+                    <label class="fld">Medidas e Especificações Apuradas no Local *
+                        <textarea rows="2" @bind="TOrcMedicoes" placeholder="Ex.: Parede 3,60m x 2,60m | Bancada 2,20m | Pontos hidráulicos conferidos..."></textarea>
+                    </label>
+
+                    <div class="sec-sub" style="margin-top:6px">2. Registro do Orçamento Enviado (Alimenta <code>{{orcamento.*}}</code>)</div>
+                    <div class="fld-row">
+                        <label class="fld">Valor do Orçamento (R$) *
+                            <input type="number" @bind="TOrcValorReais" />
+                        </label>
+                        <label class="fld">Prazo de Execução (Dias) *
+                            <input type="number" @bind="TOrcPrazoDias" />
+                        </label>
+                    </div>
+                    <label class="fld">Condições de Pagamento *
+                        <input @bind="TOrcCondicoes" placeholder="Ex.: 30% na assinatura + 3x mensais" />
+                    </label>
+                    <label class="fld">Resumo do Escopo *
+                        <textarea rows="2" @bind="TOrcEscopo" placeholder="Itens contemplados na proposta enviada ao cliente..."></textarea>
+                    </label>
+                    <label class="fld">Arquivo PDF Enviado
+                        <input @bind="TOrcPdf" />
+                    </label>
+                </div>
+            }
+
+            @* 4. ORÇAMENTO -> NEGOCIAÇÃO *@
+            else if (TransicaoDestino == "Negociação")
+            {
+                <div class="sub-box">
+                    <div class="sec-sub">1. Aprovação do Orçamento pelo Cliente</div>
+                    <label class="fld chk">
+                        <input type="checkbox" @bind="TNegOrcamentoAprovado" />
+                        <strong>Confirmo que o cliente APROVOU o orçamento (@MockErpStore.FormatMoeda(TransicaoNeg.ValorEstimado))</strong>
+                    </label>
+
+                    <div class="sec-sub" style="margin-top:6px">2. Emissão e Envio do Contrato Preenchido</div>
+                    <label class="fld">Modelo de Contrato (Template) *
+                        <select @bind="TNegTemplateId">
+                            @foreach (var m in Store.ModelosContrato.Where(x => x.Ativo))
+                            {
+                                <option value="@m.Id">@m.Nome (@m.Versao)</option>
+                            }
+                        </select>
+                    </label>
+                    @if (cli is not null && string.IsNullOrWhiteSpace(cli.CpfCnpj))
+                    {
+                        <label class="fld">CPF/CNPJ do Cliente (Preenchimento rápido na Aba 2) *
+                            <input @bind="cli.CpfCnpj" placeholder="000.000.000-00" />
+                        </label>
+                    }
+                    <small class="muted">O contrato será gerado com os dados reais do cliente (Aba 2), medições da visita e orçamento aprovado (Aba 3) via <strong>@Store.SignatureProviderAtivo</strong>.</small>
+                </div>
+            }
+
+            @* 5. NEGOCIAÇÃO -> GANHO *@
+            else if (TransicaoDestino == "Ganho")
+            {
+                <div class="sub-box">
+                    <p style="margin:0;font-size:13.5px">
+                        <strong>🎉 Confirmação de Fechamento e Assinatura do Contrato</strong>
+                    </p>
+                    <label class="fld chk">
+                        <input type="checkbox" @bind="TGanhoContratoAssinado" />
+                        <strong>Confirmo que o Contrato emitido encontra-se ASSINADO pelo cliente</strong>
+                    </label>
+                    <div style="font-size:12.5px;background:rgba(46,158,91,.1);padding:10px;border-radius:8px;border:1px solid var(--ok)">
+                        <strong>Automações que serão disparadas agora:</strong>
+                        <ul style="margin:6px 0 0 18px;padding:0">
+                            <li>Status do Contrato atualizado para <strong>Assinado</strong>.</li>
+                            @if (cli?.IsLead == true)
+                            {
+                                <li><strong>@(cli.Nome)</strong> será promovido(a) automaticamente de <strong>Lead → Cliente</strong>!</li>
+                            }
+                            <li>Criação automática do <strong>Serviço</strong> em <em>Serviços / Kanban / Cronograma</em> copiando as @(ts?.EtapasPadrao.Count ?? 0) etapas-padrão de <strong>@(ts?.Nome)</strong>.</li>
+                            <li>Geração automática do lançamento financeiro a receber (@MockErpStore.FormatMoeda(TransicaoNeg.ValorEstimado)) em <em>Financeiro</em>.</li>
+                        </ul>
+                    </div>
+                </div>
+            }
+
+            @* 6. QUALQUER -> PERDIDO *@
+            else if (TransicaoDestino == "Perdido")
+            {
+                <div class="sub-box">
+                    <div class="fld-row">
+                        <label class="fld">Motivo Principal da Perda *
+                            <select @bind="TPerdaMotivo">
+                                <option value="desacordo_comercial">Desacordo Comercial</option>
+                                <option value="fechou_concorrencia">Fechou com a Concorrência</option>
+                                <option value="sem_resposta">Cliente sem Resposta / Desistiu</option>
+                            </select>
+                        </label>
+                        <label class="fld">Submotivo *
+                            <select @bind="TPerdaSubmotivo">
+                                <option value="valor">Valor / Orçamento acima</option>
+                                <option value="prazo">Prazo de entrega</option>
+                                <option value="ambos">Ambos (Valor e Prazo)</option>
+                                <option value="outro">Outro</option>
+                            </select>
+                        </label>
+                    </div>
+                    <label class="fld">Observações do Cancelamento / Perda
+                        <textarea rows="2" @bind="TPerdaObs" placeholder="Detalhes para inteligência comercial..."></textarea>
+                    </label>
+                    <label class="fld chk" style="margin-top:4px">
+                        <input type="checkbox" @bind="TPerdaReabrirVinculada" />
+                        <strong>Reabrir nova negociação vinculada a partir deste cancelamento (mantém histórico e cria nova versão de proposta)</strong>
+                    </label>
+                </div>
+            }
+
+            <div class="actions end" style="margin-top:8px">
+                <button class="btn" @onclick="CancelarTransicao">Cancelar</button>
+                <button class="btn primary" @onclick="ConfirmarTransicao">Confirmar e Mover para @TransicaoDestino</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .flt-sel { background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font-size: 12.5px; font-family: inherit; }
+    .journey-toggle { display: inline-flex; background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    .jt-btn { background: none; border: 0; padding: 7px 11px; font-size: 12px; color: var(--muted); cursor: pointer; font-family: inherit; }
+    .jt-btn.on { background: var(--accent); color: #1a1a1a; font-weight: 600; }
+    .bcol.allowed { border: 2px dashed var(--ok) !important; background: rgba(46, 158, 91, 0.08) !important; box-shadow: inset 0 0 0 1px rgba(46, 158, 91, 0.25); }
+    .bcol.allowed header { color: var(--ok) !important; }
+    .bcol.blocked { opacity: 0.42; filter: grayscale(0.4); cursor: not-allowed !important; }
+    .btn-link-mini { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; font-size: 11px; cursor: pointer; color: var(--text); }
+    .btn-link-mini:hover { border-color: var(--accent); }
+    .funil-banner { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 600; margin-bottom: 10px; }
+    .funil-banner.ok { background: rgba(46,158,91,.15); color: var(--ok); }
+    .funil-banner.err { background: rgba(192,57,43,.15); color: var(--err); }
+    .sub-box { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+    .sec-sub { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); }
+</style>
+
 @code {
-    record Lead(string Nome, string Interesse, string Tel);
-    class Col { public required string Nome; public List<Lead> Leads = []; }
+    static readonly string[] Estagios = ["Novo", "Contato", "Visita/Medição", "Orçamento", "Negociação", "Ganho", "Perdido"];
 
-    (Col Col, Lead Lead)? Drag;
-    (Col Col, Lead Lead)? Sel;
-    Col? DragOver;
+    string FiltroServico = "todos";
+    string FiltroJornada = "todos";
+    string FiltroPeriodoGanhoPerdido = "mes";
 
-    void ToqueCard(Col col, Lead lead) => Sel = Sel?.Lead == lead ? null : (col, lead);
+    NegociacaoItem? Drag;
+    NegociacaoItem? Sel;
+    string? DragOverCol;
 
-    void ToqueCol(Col destino)
+    NegociacaoItem? ResumoNeg;
+    NegociacaoItem? TransicaoNeg;
+    string TransicaoDestino = "";
+    string BannerMsg = "";
+    bool BannerErro;
+    string ModalErro = "";
+
+    // Campos dos Modais de Transição
+    string TContatoObs = "Primeiro contato realizado via WhatsApp/Telefone.";
+    string TVisitaData = "01/11/2026 14:30";
+    string TVisitaObs = "";
+    string TOrcMedicoes = "";
+    decimal TOrcValorReais = 38000;
+    int TOrcPrazoDias = 30;
+    string TOrcCondicoes = "30% de sinal na assinatura + 3x mensais sem juros";
+    string TOrcEscopo = "";
+    string TOrcPdf = "Orcamento_v1.pdf";
+    bool TNegOrcamentoAprovado = true;
+    int TNegTemplateId = 1;
+    bool TGanhoContratoAssinado = true;
+    string TPerdaMotivo = "desacordo_comercial";
+    string TPerdaSubmotivo = "valor";
+    string TPerdaObs = "";
+    bool TPerdaReabrirVinculada;
+
+    NegociacaoItem? ActiveCard => Drag ?? Sel;
+
+    List<NegociacaoItem> GetCardsColuna(string colNome)
     {
-        if (Sel is { } s && s.Col != destino)
+        return Store.Negociacoes
+            .Where(n => n.Estagio == colNome)
+            .Where(n =>
+            {
+                var cli = Store.GetCliente(n.ClienteId);
+                var ts = Store.GetTipoServico(n.TipoServicoId);
+                if (FiltroServico.StartsWith("cat:") && ts?.Categoria != FiltroServico[4..])
+                    return false;
+                if (FiltroServico.StartsWith("id:") && int.TryParse(FiltroServico[3..], out var tid) && n.TipoServicoId != tid)
+                    return false;
+                if (FiltroJornada == "leads" && cli?.IsLead != true)
+                    return false;
+                if (FiltroJornada == "clientes" && cli?.IsLead != false)
+                    return false;
+                return true;
+            })
+            .ToList();
+    }
+
+    static bool IsDestinoPermitido(string origem, string destino)
+    {
+        if (origem == destino) return false;
+        if (origem is "Ganho" or "Perdido") return false;
+        if (destino == "Perdido") return true;
+
+        var idxOrig = Array.IndexOf(Estagios, origem);
+        var idxDest = Array.IndexOf(Estagios, destino);
+        return idxOrig >= 0 && idxDest == idxOrig + 1 && destino != "Perdido";
+    }
+
+    string GetColAffordanceClass(string colNome)
+    {
+        if (ActiveCard is null) return "";
+        if (ActiveCard.Estagio == colNome) return "";
+        return IsDestinoPermitido(ActiveCard.Estagio, colNome) ? "allowed" : "blocked";
+    }
+
+    void OnDragStart(NegociacaoItem n)
+    {
+        if (!Store.HasPerm("funil.edit") || n.Estagio is "Ganho" or "Perdido") return;
+        Drag = n;
+        Sel = n;
+    }
+
+    void OnClickCard(NegociacaoItem n)
+    {
+        if (n.Estagio is "Ganho" or "Perdido" || !Store.HasPerm("funil.edit"))
         {
-            s.Col.Leads.Remove(s.Lead);
-            destino.Leads.Add(s.Lead);
+            ResumoNeg = n;
+            return;
         }
+        Sel = Sel?.Id == n.Id ? null : n;
+    }
+
+    void LimparSelecao()
+    {
         Sel = null;
-    }
-
-    void Drop(Col destino)
-    {
-        if (Drag is { } d && d.Col != destino)
-        {
-            d.Col.Leads.Remove(d.Lead);
-            destino.Leads.Add(d.Lead);
-        }
         Drag = null;
-        DragOver = null;
+        DragOverCol = null;
     }
 
-    List<Col> Colunas =
-    [
-        new() { Nome = "Novo", Leads = [new("Fernanda Lira", "Cozinha", "(11) 96543-3300"), new("Juliana Matos", "Banheiro", "(11) 94321-5500"), new("Patrícia Gomes", "Living", "(11) 98865-1111")] },
-        new() { Nome = "Contato", Leads = [new("André Sales", "Dormitório", "(11) 91098-8800"), new("Loja Centro", "Balcão comercial", "(11) 3030-4040")] },
-        new() { Nome = "Visita/Medição", Leads = [new("Tiago Braga", "Cozinha + lavanderia", "(11) 97788-9900")] },
-        new() { Nome = "Orçamento", Leads = [new("Condomínio Vista", "Hall de entrada", "(11) 3444-5555"), new("Renata Piva", "Home office", "(11) 96677-8888")] },
-        new() { Nome = "Negociação", Leads = [new("Marcos Tuler", "Reforma completa", "(11) 95566-7777")] },
-        new() { Nome = "Ganho", Leads = [new("Camila Ferraz", "Home office", "(11) 90087-9900")] },
-        new() { Nome = "Perdido", Leads = [new("Otávio Reis", "Preço", "(11) 94455-6666")] },
-    ];
+    void OnClickColuna(string destino)
+    {
+        if (Sel is not null && Sel.Estagio != destino)
+        {
+            IniciarTransicao(Sel, destino);
+        }
+    }
+
+    void OnDropColuna(string destino)
+    {
+        var card = Drag ?? Sel;
+        Drag = null;
+        DragOverCol = null;
+        if (card is not null && card.Estagio != destino)
+        {
+            IniciarTransicao(card, destino);
+        }
+    }
+
+    void IniciarTransicao(NegociacaoItem card, string destino)
+    {
+        ModalErro = "";
+        if (!IsDestinoPermitido(card.Estagio, destino))
+        {
+            BannerErro = true;
+            BannerMsg = $"Movimento bloqueado ({card.Estagio} → {destino}): o Funil permite avançar apenas para a coluna imediatamente seguinte ou para 'Perdido'.";
+            LimparSelecao();
+            return;
+        }
+
+        TransicaoNeg = card;
+        TransicaoDestino = destino;
+
+        // Pré-preencher campos inteligentes conforme o card
+        var cli = Store.GetCliente(card.ClienteId);
+        var ts = Store.GetTipoServico(card.TipoServicoId);
+        var ultVis = card.Visitas.LastOrDefault();
+        TOrcMedicoes = ultVis?.Medicoes ?? $"Levantamento técnico para {ts?.Nome} no endereço do cliente.";
+        TOrcValorReais = card.ValorEstimado / 100m;
+        TOrcPrazoDias = 30;
+        TOrcEscopo = $"Execução completa de {ts?.Nome} conforme medições aprovadas.";
+        TOrcPdf = $"Orcamento_v{card.Orcamentos.Count + 1}_{cli?.Nome.Replace(" ", "")}.pdf";
+        TNegTemplateId = Store.ModelosContrato.FirstOrDefault(m => m.TipoServicoId == card.TipoServicoId)?.Id
+                      ?? Store.ModelosContrato.First().Id;
+        TNegOrcamentoAprovado = true;
+        TGanhoContratoAssinado = true;
+    }
+
+    void CancelarTransicao()
+    {
+        TransicaoNeg = null;
+        TransicaoDestino = "";
+        ModalErro = "";
+        LimparSelecao();
+    }
+
+    void ConfirmarTransicao()
+    {
+        if (TransicaoNeg is null) return;
+        var neg = TransicaoNeg;
+        var cli = Store.GetCliente(neg.ClienteId);
+        var ts = Store.GetTipoServico(neg.TipoServicoId);
+
+        if (TransicaoDestino == "Contato")
+        {
+            neg.Estagio = "Contato";
+            neg.ParadoDias = 0;
+            cli?.Timeline.Add(new("30/10/2026 11:00", Store.CurrentRole, $"Negociação #{neg.Id} avançou para Contato: {TContatoObs}"));
+            BannerErro = false;
+            BannerMsg = $"Card #{neg.Id} movido para Contato!";
+        }
+        else if (TransicaoDestino == "Visita/Medição")
+        {
+            if (string.IsNullOrWhiteSpace(TVisitaData))
+            {
+                ModalErro = "Informe a data/hora agendada para a visita.";
+                return;
+            }
+            neg.Visitas.Add(new VisitaItem
+            {
+                Id = neg.Visitas.Count + 1,
+                NegociacaoId = neg.Id,
+                DataAgendada = TVisitaData,
+                Status = "agendada",
+                Observacoes = TVisitaObs
+            });
+            neg.Estagio = "Visita/Medição";
+            neg.ParadoDias = 0;
+            cli?.Timeline.Add(new("30/10/2026 11:10", Store.CurrentRole, $"Visita agendada para {TVisitaData} (Negociação #{neg.Id}) → Avançou para Visita/Medição"));
+            BannerErro = false;
+            BannerMsg = $"Visita agendada na Aba 3 e Card #{neg.Id} movido para Visita/Medição!";
+        }
+        else if (TransicaoDestino == "Orçamento")
+        {
+            if (string.IsNullOrWhiteSpace(TOrcMedicoes) || TOrcValorReais <= 0 || string.IsNullOrWhiteSpace(TOrcCondicoes))
+            {
+                ModalErro = "Confirme as medições da visita, o valor do orçamento e as condições de pagamento.";
+                return;
+            }
+
+            var vis = neg.Visitas.LastOrDefault();
+            if (vis is null)
+            {
+                vis = new VisitaItem { Id = 1, NegociacaoId = neg.Id, DataAgendada = "30/10/2026" };
+                neg.Visitas.Add(vis);
+            }
+            vis.Status = "realizada";
+            vis.DataRealizada = "30/10/2026 11:20";
+            vis.Medicoes = TOrcMedicoes;
+
+            foreach (var ant in neg.Orcamentos.Where(o => o.Status == "enviado"))
+                ant.Status = "substituido";
+
+            var novoOrc = new OrcamentoItem
+            {
+                Id = Store.Negociacoes.SelectMany(x => x.Orcamentos).Select(o => o.Id).DefaultIfEmpty(0).Max() + 1,
+                NegociacaoId = neg.Id,
+                Versao = neg.Orcamentos.Count + 1,
+                Valor = (long)(TOrcValorReais * 100),
+                PrazoExecucaoDias = TOrcPrazoDias,
+                CondicoesPagamento = TOrcCondicoes,
+                EscopoResumo = TOrcEscopo,
+                ArquivoPdf = TOrcPdf,
+                Status = "enviado",
+                EnviadoEm = "30/10/2026"
+            };
+            neg.Orcamentos.Add(novoOrc);
+            neg.ValorEstimado = novoOrc.Valor;
+            neg.Estagio = "Orçamento";
+            neg.ParadoDias = 0;
+
+            cli?.Timeline.Add(new("30/10/2026 11:20", Store.CurrentRole, $"Medições registradas e Orçamento v{novoOrc.Versao} ({MockErpStore.FormatMoeda(novoOrc.Valor)}) enviado → Avançou para Orçamento"));
+            BannerErro = false;
+            BannerMsg = $"Medições salvas e Orçamento v{novoOrc.Versao} registrado na Aba 3!";
+        }
+        else if (TransicaoDestino == "Negociação")
+        {
+            if (!TNegOrcamentoAprovado)
+            {
+                ModalErro = "É necessário confirmar que o orçamento foi aprovado pelo cliente para avançar à Negociação/Contrato.";
+                return;
+            }
+            var orc = neg.Orcamentos.LastOrDefault();
+            if (orc is null)
+            {
+                orc = new OrcamentoItem
+                {
+                    Id = Store.Negociacoes.SelectMany(x => x.Orcamentos).Select(o => o.Id).DefaultIfEmpty(0).Max() + 1,
+                    NegociacaoId = neg.Id,
+                    Versao = 1,
+                    Valor = neg.ValorEstimado,
+                    PrazoExecucaoDias = 30,
+                    CondicoesPagamento = "Conforme proposta aprovada",
+                    EscopoResumo = ts?.Nome ?? "Serviço",
+                    Status = "aceito",
+                    EnviadoEm = "30/10/2026",
+                    RespondidoEm = "30/10/2026"
+                };
+                neg.Orcamentos.Add(orc);
+            }
+            else
+            {
+                orc.Status = "aceito";
+                orc.RespondidoEm = "30/10/2026";
+            }
+
+            var novoContratoId = Store.ContratosEmitidos.Count > 0 ? Store.ContratosEmitidos.Max(c => c.Id) + 1 : 101;
+            var contrato = new ContratoEmitidoItem
+            {
+                Id = novoContratoId,
+                ClienteId = neg.ClienteId,
+                NegociacaoId = neg.Id,
+                OrcamentoId = orc.Id,
+                TemplateId = TNegTemplateId,
+                Status = "aguardando",
+                EnviadoEm = "30/10/2026",
+                HashDoc = $"sha256:{Guid.NewGuid().ToString("N")[..16]}",
+                PdfNome = $"Contrato_{novoContratoId}_{cli?.Nome.Replace(" ", "")}.pdf",
+                TextoRenderizado = Store.RenderContratoTexto(neg.ClienteId, neg.Id, TNegTemplateId)
+            };
+            Store.ContratosEmitidos.Insert(0, contrato);
+
+            neg.Estagio = "Negociação";
+            neg.ParadoDias = 0;
+            cli?.Timeline.Add(new("30/10/2026 11:30", Store.CurrentRole, $"Orçamento v{orc.Versao} aprovado + Contrato #{contrato.Id} emitido e enviado → Avançou para Negociação"));
+            BannerErro = false;
+            BannerMsg = $"Orçamento aprovado e Contrato #{contrato.Id} emitido! Card em Negociação.";
+        }
+        else if (TransicaoDestino == "Ganho")
+        {
+            if (!TGanhoContratoAssinado)
+            {
+                ModalErro = "O avanço para Ganho exige a confirmação de que o Contrato está ASSINADO.";
+                return;
+            }
+
+            var orc = neg.Orcamentos.LastOrDefault(o => o.Status == "aceito") ?? neg.Orcamentos.LastOrDefault();
+            var valorFinal = orc?.Valor ?? neg.ValorEstimado;
+            var prazoDias = orc?.PrazoExecucaoDias ?? 30;
+
+            // 1. Atualiza ou cria contrato assinado
+            var ct = Store.ContratosEmitidos.FirstOrDefault(c => c.NegociacaoId == neg.Id);
+            if (ct is not null)
+            {
+                ct.Status = "assinado";
+                ct.AssinadoEm = "30/10/2026";
+            }
+
+            // 2. Promove Lead -> Cliente se era Lead!
+            bool promoveuLead = false;
+            if (cli is not null && cli.IsLead)
+            {
+                cli.IsLead = false;
+                promoveuLead = true;
+            }
+
+            // 3. Cria o ServicoItem copiando as etapas-padrão do TipoServico
+            var novoServId = Store.Servicos.Count > 0 ? Store.Servicos.Max(s => s.Id) + 1 : 1;
+            var etapasCriadas = new List<ServicoEtapaItem>();
+            if (ts is not null)
+            {
+                int baseId = novoServId * 100;
+                var dataCursor = new DateOnly(2026, 10, 30);
+                foreach (var tplEtapa in ts.EtapasPadrao)
+                {
+                    var dtFim = dataCursor.AddDays(Math.Max(1, tplEtapa.DuracaoDias));
+                    etapasCriadas.Add(new ServicoEtapaItem
+                    {
+                        Id = baseId + tplEtapa.Id,
+                        ServicoId = novoServId,
+                        ParentId = tplEtapa.ParentId.HasValue ? baseId + tplEtapa.ParentId.Value : null,
+                        PredecessoraId = tplEtapa.PredecessoraId.HasValue ? baseId + tplEtapa.PredecessoraId.Value : null,
+                        Nome = tplEtapa.Nome,
+                        Ordem = tplEtapa.Ordem,
+                        Coluna = "A iniciar",
+                        DtInicioPrevista = dataCursor,
+                        DtPrevista = dtFim,
+                        DuracaoDias = tplEtapa.DuracaoDias,
+                        ResponsavelNome = "Equipe Hako"
+                    });
+                    if (tplEtapa.ParentId == null)
+                        dataCursor = dtFim;
+                }
+            }
+
+            var novoServico = new ServicoItem
+            {
+                Id = novoServId,
+                ClienteId = neg.ClienteId,
+                TipoServicoId = neg.TipoServicoId,
+                NegociacaoId = neg.Id,
+                Status = "andamento",
+                ModoExecucao = ts?.Categoria == "mobiliario" ? "oficina" : "no_local",
+                EnderecoExecucao = cli?.EnderecoCompleto ?? "",
+                EnderecoInstalacao = cli?.EnderecoCompleto ?? "",
+                DtInicio = new DateOnly(2026, 10, 30),
+                DtEntrega = new DateOnly(2026, 10, 30).AddDays(prazoDias),
+                PrazoDias = prazoDias,
+                ValorContrato = valorFinal,
+                Etapas = etapasCriadas
+            };
+            Store.Servicos.Insert(0, novoServico);
+            if (ct is not null) ct.ServicoId = novoServId;
+
+            // 4. Cria Lançamento Financeiro inicial a receber
+            var novoLancId = Store.Lancamentos.Count > 0 ? Store.Lancamentos.Max(l => l.Id) + 1 : 1;
+            Store.Lancamentos.Add(new LancamentoFinanceiro
+            {
+                Id = novoLancId,
+                ServicoId = novoServId,
+                ClienteId = neg.ClienteId,
+                Pagar = false,
+                Natureza = "parcela",
+                Status = "pendente",
+                Descricao = $"Contrato Assinado — {ts?.Nome} (Serviço #{novoServId})",
+                BeneficiarioOuCliente = cli?.Nome ?? "Cliente",
+                ValorCentavos = valorFinal,
+                Vencimento = new DateOnly(2026, 11, 10)
+            });
+
+            neg.Estagio = "Ganho";
+            neg.Status = "fechada";
+            neg.ParadoDias = 0;
+
+            cli?.Timeline.Add(new("30/10/2026 11:45", Store.CurrentRole,
+                $"Negociação #{neg.Id} movida para GANHO com Contrato Assinado! {(promoveuLead ? "Lead promovido a CLIENTE. " : "")}Serviço #{novoServId} e Lançamento Financeiro criados automaticamente."));
+
+            BannerErro = false;
+            BannerMsg = $"🎉 Negociação #{neg.Id} fechada em GANHO! {(promoveuLead ? $"{cli?.Nome} agora é Cliente! " : "")}Serviço #{novoServId} criado no Kanban.";
+        }
+        else if (TransicaoDestino == "Perdido")
+        {
+            neg.Estagio = "Perdido";
+            neg.Status = "cancelada";
+            neg.MotivoPerda = TPerdaMotivo;
+            neg.SubmotivoPerda = TPerdaSubmotivo;
+            neg.ObsPerda = TPerdaObs;
+            neg.ParadoDias = 0;
+
+            cli?.Timeline.Add(new("30/10/2026 11:50", Store.CurrentRole,
+                $"Negociação #{neg.Id} marcada como PERDIDA (Motivo: {TPerdaMotivo} / {TPerdaSubmotivo}). {TPerdaObs}"));
+
+            if (TPerdaReabrirVinculada)
+            {
+                var novaId = Store.Negociacoes.Max(x => x.Id) + 1;
+                var reaberta = new NegociacaoItem
+                {
+                    Id = novaId,
+                    ClienteId = neg.ClienteId,
+                    TipoServicoId = neg.TipoServicoId,
+                    Estagio = "Contato",
+                    Status = "em_andamento",
+                    ValorEstimado = neg.ValorEstimado,
+                    Origem = neg.Origem,
+                    NegociacaoAnteriorId = neg.Id,
+                    CriadoEm = "30/10/2026",
+                    ParadoDias = 0
+                };
+                Store.Negociacoes.Add(reaberta);
+                cli?.Timeline.Add(new("30/10/2026 11:51", Store.CurrentRole,
+                    $"Nova Negociação vinculada #{novaId} reaberta em 'Contato' a partir do cancelamento da Negociação #{neg.Id}."));
+                BannerMsg = $"Card #{neg.Id} movido para Perdido e nova Negociação vinculada #{novaId} reaberta em Contato!";
+            }
+            else
+            {
+                BannerMsg = $"Card #{neg.Id} movido para Perdido (motivo registrado na Aba 3).";
+            }
+            BannerErro = false;
+        }
+
+        TransicaoNeg = null;
+        TransicaoDestino = "";
+        LimparSelecao();
+        Store.NotifyStateChanged();
+    }
+
+    void AbrirResumoCard(NegociacaoItem n)
+    {
+        ResumoNeg = n;
+    }
+
+    void IrParaClientesAba3()
+    {
+        ResumoNeg = null;
+        Store.ActiveSection = "clientes";
+        Store.NotifyStateChanged();
+    }
 }

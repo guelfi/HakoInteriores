@@ -1,31 +1,93 @@
+@inject MockErpStore Store
+
 <div class="tabs">
-    <button class="tab @(Tab == 0 ? "on" : "")" @onclick="() => Tab = 0">Emitidos</button>
-    <button class="tab @(Tab == 1 ? "on" : "")" @onclick="() => Tab = 1">Modelos</button>
+    <button class="tab @(Tab == 0 ? "on" : "")" @onclick="() => Tab = 0">Contratos Emitidos (@Store.ContratosEmitidos.Count)</button>
+    <button class="tab @(Tab == 1 ? "on" : "")" @onclick="() => Tab = 1">Modelos de Contrato (@Store.ModelosContrato.Count)</button>
 </div>
 
-<div class="toolbar">
-    <div class="actions">
-        <button class="btn primary" @onclick="Novo">@(Tab == 0 ? "+ Emitir contrato" : "+ Novo modelo")</button>
+@if (!string.IsNullOrWhiteSpace(FeedbackMsg))
+{
+    <div class="ct-banner @(FeedbackErro ? "err" : "ok")">
+        <span>@FeedbackMsg</span>
+        <button class="btn" style="padding:2px 8px;font-size:11px" @onclick='() => FeedbackMsg = ""'>✕</button>
     </div>
-    <div class="pager">
-        <button disabled title="Início">⏮</button><button disabled title="Anterior">◀</button>
-        <span>1 / 1</span>
-        <button disabled title="Próximo">▶</button><button disabled title="Fim">⏭</button>
-    </div>
-</div>
+}
 
 @if (Tab == 0)
 {
+    <div class="toolbar">
+        <div class="actions" style="flex-wrap:wrap;align-items:center;gap:8px">
+            @if (Store.HasPerm("contratos.edit"))
+            {
+                <button class="btn primary" @onclick="AbrirModalEmitir">+ Emitir contrato a partir de Orçamento Aprovado</button>
+            }
+            <input class="flt-inp" placeholder="🔍 Buscar por cliente ou nº..." @bind="BuscaCliente" @bind:event="oninput" />
+            <select class="flt-sel" @bind="FiltroStatus">
+                <option value="todos">Status: Todos</option>
+                <option value="rascunho">Rascunho</option>
+                <option value="enviado">Enviado</option>
+                <option value="aguardando">Aguardando Assinatura</option>
+                <option value="assinado">Assinado</option>
+                <option value="cancelado">Cancelado</option>
+            </select>
+        </div>
+        <div class="pager">
+            <span class="badge b-muted">Provider Ativo: <strong>@Store.SignatureProviderAtivo</strong></span>
+        </div>
+    </div>
+
     <div class="grid-card">
         <table class="grid">
-            <thead><tr><th>Status</th><th>Cliente</th><th class="hide-m">Modelo</th><th class="hide-m">Enviado em</th><th class="hide-m">Assinado em</th></tr></thead>
+            <thead>
+                <tr>
+                    <th>Status</th>
+                    <th>Nº Contrato</th>
+                    <th>Cliente</th>
+                    <th class="hide-m">Tipo de Serviço / Modelo</th>
+                    <th class="num">Valor (Orçamento)</th>
+                    <th class="hide-m">Enviado em</th>
+                    <th class="hide-m">Assinado em</th>
+                    <th class="hide-m">Provider</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
             <tbody>
-                @foreach (var c in Emitidos)
+                @foreach (var ct in FilteredEmitidos)
                 {
-                    <tr @onclick="() => EditarEmit(c)">
-                        <td><span class="badge @c.Cls">@c.Status</span></td>
-                        <td>@c.Cliente</td><td class="hide-m">@c.Modelo</td>
-                        <td class="mono hide-m">@c.Enviado</td><td class="mono hide-m">@c.Assinado</td>
+                    var cli = Store.GetCliente(ct.ClienteId);
+                    var neg = Store.Negociacoes.FirstOrDefault(n => n.Id == ct.NegociacaoId);
+                    var orc = neg?.Orcamentos.FirstOrDefault(o => o.Id == ct.OrcamentoId) ?? neg?.Orcamentos.LastOrDefault();
+                    var tpl = Store.ModelosContrato.FirstOrDefault(m => m.Id == ct.TemplateId);
+                    var valor = orc?.Valor ?? neg?.ValorEstimado ?? 0;
+
+                    <tr @onclick="() => VisualizarContrato(ct)">
+                        <td><span class="badge @GetStatusBadge(ct.Status)">@ct.Status.ToUpper()</span></td>
+                        <td class="mono"><strong>#@ct.Id</strong></td>
+                        <td>
+                            <strong>@(cli?.Nome ?? "—")</strong>
+                            <div class="muted" style="font-size:11px">Negociação #@ct.NegociacaoId · Orç. v@(orc?.Versao ?? 1)</div>
+                        </td>
+                        <td class="hide-m">
+                            <div>@(tpl?.Nome ?? "Modelo Padrão")</div>
+                            <small class="muted">@ct.PdfNome</small>
+                        </td>
+                        <td class="num mono"><strong>@MockErpStore.FormatMoeda(valor)</strong></td>
+                        <td class="mono hide-m">@ct.EnviadoEm</td>
+                        <td class="mono hide-m">@ct.AssinadoEm</td>
+                        <td class="hide-m"><span class="badge b-muted">@Store.SignatureProviderAtivo</span></td>
+                        <td @onclick:stopPropagation>
+                            <div style="display:flex;gap:6px;flex-wrap:wrap">
+                                <button class="btn" style="padding:4px 8px;font-size:11.5px" @onclick="() => VisualizarContrato(ct)">
+                                    👁 Ver Contrato / PDF
+                                </button>
+                                @if (ct.Status != "assinado" && ct.Status != "cancelado" && Store.HasPerm("contratos.edit"))
+                                {
+                                    <button class="btn primary" style="padding:4px 8px;font-size:11.5px" @onclick="() => SimularAssinatura(ct)">
+                                        ✓ Simular Assinatura
+                                    </button>
+                                }
+                            </div>
+                        </td>
                     </tr>
                 }
             </tbody>
@@ -34,16 +96,35 @@
 }
 else
 {
+    <div class="toolbar">
+        <div class="actions">
+            @if (Store.HasPerm("contratos.edit"))
+            {
+                <button class="btn primary" @onclick="NovoModelo">+ Novo Modelo de Contrato</button>
+            }
+        </div>
+        <span class="muted" style="font-size:12.5px">Clique num modelo para abrir o Editor Simples com variáveis dinâmicas <code>{{...}}</code></span>
+    </div>
+
     <div class="grid-card">
         <table class="grid">
-            <thead><tr><th>Modelo</th><th class="hide-m">Cláusulas</th><th class="hide-m">Versão</th><th>Ativo</th></tr></thead>
+            <thead>
+                <tr>
+                    <th>Nome do Modelo</th>
+                    <th>Tipo de Serviço Vinculado</th>
+                    <th>Versão</th>
+                    <th>Ativo</th>
+                </tr>
+            </thead>
             <tbody>
-                @foreach (var m in Modelos)
+                @foreach (var m in Store.ModelosContrato)
                 {
-                    <tr @onclick="() => EditarMod(m)">
-                        <td>@m.Nome</td><td class="num hide-m">@m.Clausulas</td>
-                        <td class="mono hide-m">@m.Versao</td>
-                        <td><i class="dot @(m.Ativo ? "on" : "off")"></i></td>
+                    var ts = Store.GetTipoServico(m.TipoServicoId);
+                    <tr @onclick="() => EditarModelo(m)">
+                        <td><strong>@m.Nome</strong></td>
+                        <td><span class="badge b-info">@(ts?.Nome ?? "Geral")</span></td>
+                        <td class="mono"><span class="badge b-muted">@m.Versao</span></td>
+                        <td><i class="dot @(m.Ativo ? "on" : "off")"></i> @(m.Ativo ? "Ativo" : "Inativo")</td>
                     </tr>
                 }
             </tbody>
@@ -51,109 +132,533 @@ else
     </div>
 }
 
-@if (FormEmit is not null)
+@* ==================== MODAL 1: EMITIR CONTRATO A PARTIR DE ORÇAMENTO APROVADO ==================== *@
+@if (ShowModalEmitir)
 {
-    <div class="modal-back" @onclick="() => FormEmit = null">
-        <div class="modal" @onclick:stopPropagation>
-            <h3>@(IsNew ? "Emitir contrato" : "Contrato")</h3>
-            <label class="fld">Cliente
-                <select @bind="FormEmit.Cliente">
-                    <option>Mariana Costa</option><option>Roberto Almeida</option>
-                    <option>Camila Ferraz</option><option>Beatriz Nunes</option>
-                </select>
-            </label>
-            <label class="fld">Modelo
-                <select @bind="FormEmit.Modelo">
-                    <option>Prestação de serviço — marcenaria</option>
-                    <option>Prestação de serviço — reforma</option>
-                    <option>Termo de entrega e garantia</option>
-                </select>
-            </label>
-            @if (!IsNew)
-            {
-                <label class="fld">Status
-                    <select @bind="FormEmit.Status">
-                        <option>Rascunho</option><option>Enviado</option>
-                        <option>Aguardando</option><option>Assinado</option>
-                    </select>
-                </label>
-            }
-            @if (Cancelando)
-            {
-                <label class="fld">Justificativa do cancelamento (obrigatória)
-                    <textarea rows="2" placeholder="Motivo do cancelamento do contrato"></textarea>
-                </label>
-            }
-            <div class="actions end">
-                <button class="btn" @onclick="Fechar">Voltar</button>
-                @if (!IsNew && !Cancelando) { <button class="btn danger" @onclick="() => Cancelando = true">Cancelar contrato</button> }
-                @if (Cancelando) { <button class="btn danger" @onclick="Fechar">Confirmar cancelamento</button> }
-                <button class="btn primary" @onclick="Fechar">Salvar</button>
+    var negSel = Store.Negociacoes.FirstOrDefault(n => n.Id == EmitNegociacaoId);
+    var cliSel = negSel is not null ? Store.GetCliente(negSel.ClienteId) : null;
+    var visSel = negSel?.Visitas.LastOrDefault();
+    var orcSel = negSel?.Orcamentos.LastOrDefault(o => o.Status == "aceito") ?? negSel?.Orcamentos.LastOrDefault();
+    var previewTexto = (cliSel is not null && negSel is not null)
+        ? Store.RenderContratoTexto(cliSel.Id, negSel.Id, EmitTemplateId)
+        : "";
+
+    <div class="modal-back" @onclick="() => ShowModalEmitir = false">
+        <div class="modal modal-lg" @onclick:stopPropagation>
+            <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px">
+                <div>
+                    <h3 style="margin:0">Emitir Contrato a partir de Orçamento Aprovado</h3>
+                    <small class="muted">Puxa automaticamente Dados Pessoais/Documentos (Aba 1/2), Medições da Visita e Orçamento Aprovado (Aba 3)</small>
+                </div>
+                <button class="btn" @onclick="() => ShowModalEmitir = false">✕</button>
+            </div>
+
+            <div class="modal-body-scroll">
+                <div class="fld-row">
+                    <label class="fld">1. Selecionar Cliente e Negociação (com Orçamento / Medições) *
+                        <select @bind="EmitNegociacaoId" @bind:after="OnNegociacaoEmitChange">
+                            @foreach (var n in Store.Negociacoes)
+                            {
+                                var c = Store.GetCliente(n.ClienteId);
+                                var t = Store.GetTipoServico(n.TipoServicoId);
+                                var o = n.Orcamentos.LastOrDefault();
+                                <option value="@n.Id">
+                                    Neg. #@n.Id — @(c?.Nome) · @(t?.Nome) [Orç: @(o is not null ? $"v{o.Versao} {o.Status.ToUpper()} {MockErpStore.FormatMoeda(o.Valor)}" : "Sem orçamento")]
+                                </option>
+                            }
+                        </select>
+                    </label>
+                    <label class="fld">2. Modelo de Contrato (Template) *
+                        <select @bind="EmitTemplateId">
+                            @foreach (var tpl in Store.ModelosContrato.Where(x => x.Ativo))
+                            {
+                                <option value="@tpl.Id">@tpl.Nome (@tpl.Versao)</option>
+                            }
+                        </select>
+                    </label>
+                </div>
+
+                @if (cliSel is not null && negSel is not null)
+                {
+                    <div class="sub-box">
+                        <div class="sec-hdr">👤 Dados do Contratante puxados do Banco (Aba 1 e Aba 2 — Preencha aqui mesmo se faltar!)</div>
+                        <div class="fld-row" style="grid-template-columns: 1.2fr 1fr 1fr 1fr">
+                            <label class="fld">CPF / CNPJ *
+                                <input @bind="cliSel.CpfCnpj" @bind:event="oninput" placeholder="000.000.000-00" />
+                            </label>
+                            <label class="fld">RG
+                                <input @bind="cliSel.Rg" @bind:event="oninput" placeholder="00.000.000-X" />
+                            </label>
+                            <label class="fld">Estado Civil
+                                <input @bind="cliSel.EstadoCivil" @bind:event="oninput" placeholder="Casado(a)" />
+                            </label>
+                            <label class="fld">Profissão
+                                <input @bind="cliSel.Profissao" @bind:event="oninput" placeholder="Profissão" />
+                            </label>
+                        </div>
+                        <div class="fld-row" style="grid-template-columns: 2fr 0.7fr 1.2fr 1fr">
+                            <label class="fld">Rua / Logradouro *
+                                <input @bind="cliSel.Rua" @bind:event="oninput" />
+                            </label>
+                            <label class="fld">Nº
+                                <input @bind="cliSel.Numero" @bind:event="oninput" />
+                            </label>
+                            <label class="fld">Bairro
+                                <input @bind="cliSel.Bairro" @bind:event="oninput" />
+                            </label>
+                            <label class="fld">Cidade/UF
+                                <input @bind="cliSel.Cidade" @bind:event="oninput" />
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="fld-row">
+                        <div class="sub-box">
+                            <div class="sec-hdr">📐 Medições da Visita (Aba 3 → <code>{{medicao.*}}</code>)</div>
+                            @if (visSel is not null)
+                            {
+                                <div style="font-size:12.5px"><strong>Data:</strong> @visSel.DataRealizada (@visSel.Status)</div>
+                                <div style="font-size:12.5px"><strong>Medidas:</strong> @visSel.Medicoes</div>
+                                <div class="muted" style="font-size:12px"><strong>Obs:</strong> @visSel.Observacoes</div>
+                            }
+                            else
+                            {
+                                <span class="badge b-warn">Nenhuma visita registrada nesta negociação</span>
+                            }
+                        </div>
+
+                        <div class="sub-box">
+                            <div class="sec-hdr">💰 Orçamento Aprovado (Aba 3 → <code>{{orcamento.*}}</code>)</div>
+                            @if (orcSel is not null)
+                            {
+                                <div style="font-size:12.5px">
+                                    <span class="badge @(orcSel.Status == "aceito" ? "b-ok" : "b-warn")">v@(orcSel.Versao) · @orcSel.Status.ToUpper()</span>
+                                    <strong class="mono" style="margin-left:6px">@MockErpStore.FormatMoeda(orcSel.Valor)</strong>
+                                    <span> · Prazo: @orcSel.PrazoExecucaoDias dias</span>
+                                </div>
+                                <div style="font-size:12.5px"><strong>Pagamento:</strong> @orcSel.CondicoesPagamento</div>
+                                <div class="muted" style="font-size:12px"><strong>Escopo:</strong> @orcSel.EscopoResumo</div>
+                            }
+                            else
+                            {
+                                <span class="badge b-warn">Sem orçamento registrado (usará valor estimado)</span>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="sub-box">
+                        <div class="sec-hdr">👁 Pré-visualização Real do Contrato Renderizado (Variáveis Substituídas)</div>
+                        <pre class="contract-preview">@previewTexto</pre>
+                    </div>
+                }
+            </div>
+
+            <div class="actions end" style="margin-top:8px">
+                <button class="btn" @onclick="() => ShowModalEmitir = false">Cancelar</button>
+                <button class="btn primary" @onclick="ConfirmarEmissaoContrato">
+                    📄 Gerar PDF e Enviar para Assinatura (@Store.SignatureProviderAtivo)
+                </button>
             </div>
         </div>
     </div>
 }
 
-@if (FormMod is not null)
+@* ==================== MODAL 2: VER CONTRATO PREENCHIDO / PDF / CANCELAR ==================== *@
+@if (ContratoVisualizado is not null)
 {
-    <div class="modal-back" @onclick="() => FormMod = null">
-        <div class="modal" @onclick:stopPropagation>
-            <h3>@(IsNew ? "Novo modelo" : "Modelo de contrato")</h3>
-            <label class="fld">Nome do modelo<input @bind="FormMod.Nome"></label>
-            <div class="fld-row">
-                <label class="fld">Nº de cláusulas<input @bind="FormMod.ClausulasTxt"></label>
-                <label class="fld">Versão<input @bind="FormMod.Versao" placeholder="v1.0"></label>
+    var cli = Store.GetCliente(ContratoVisualizado.ClienteId);
+    <div class="modal-back" @onclick="() => ContratoVisualizado = null">
+        <div class="modal modal-lg" @onclick:stopPropagation>
+            <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px">
+                <div>
+                    <h3 style="margin:0">Contrato #@ContratoVisualizado.Id — @(cli?.Nome)</h3>
+                    <small class="mono muted">Arquivo: @ContratoVisualizado.PdfNome · Hash: @ContratoVisualizado.HashDoc</small>
+                </div>
+                <button class="btn" @onclick="() => ContratoVisualizado = null">✕</button>
             </div>
-            <label class="fld chk"><input type="checkbox" @bind="FormMod.Ativo"> Ativo</label>
+
+            <div class="modal-body-scroll">
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                    <span class="badge @GetStatusBadge(ContratoVisualizado.Status)">Status: @ContratoVisualizado.Status.ToUpper()</span>
+                    <span class="badge b-muted">Enviado: @ContratoVisualizado.EnviadoEm</span>
+                    <span class="badge b-muted">Assinado: @ContratoVisualizado.AssinadoEm</span>
+                    <span class="badge b-info">Provider: @Store.SignatureProviderAtivo</span>
+                </div>
+
+                <pre class="contract-preview">@Store.RenderContratoTexto(ContratoVisualizado.ClienteId, ContratoVisualizado.NegociacaoId, ContratoVisualizado.TemplateId)</pre>
+
+                @if (ShowCancelForm)
+                {
+                    <div class="sub-box" style="border-color:var(--err)">
+                        <label class="fld">Motivo Obrigatório do Cancelamento do Contrato *
+                            <input @bind="ContratoVisualizado.MotivoCancelamento" placeholder="Informe a justificativa para auditoria..." />
+                        </label>
+                    </div>
+                }
+            </div>
+
             <div class="actions end">
-                <button class="btn" @onclick="Fechar">Cancelar</button>
-                @if (!IsNew) { <button class="btn danger" @onclick="() => { FormMod!.Ativo = false; Fechar(); }">Desativar</button> }
-                <button class="btn primary" @onclick="Fechar">Salvar</button>
+                <button class="btn" @onclick="() => ContratoVisualizado = null">Fechar</button>
+                @if (ContratoVisualizado.Status != "cancelado" && Store.HasPerm("contratos.edit"))
+                {
+                    @if (!ShowCancelForm)
+                    {
+                        <button class="btn danger" @onclick="() => ShowCancelForm = true">Cancelar Contrato</button>
+                    }
+                    else
+                    {
+                        <button class="btn danger" @onclick="ConfirmarCancelamentoContrato">Confirmar Cancelamento</button>
+                    }
+                }
+                @if (ContratoVisualizado.Status != "assinado" && ContratoVisualizado.Status != "cancelado" && Store.HasPerm("contratos.edit"))
+                {
+                    <button class="btn primary" @onclick="() => { SimularAssinatura(ContratoVisualizado); ContratoVisualizado = null; }">
+                        ✓ Simular Assinatura do Cliente
+                    </button>
+                }
             </div>
         </div>
     </div>
 }
+
+@* ==================== MODAL 3: EDITOR SIMPLES DE MODELO DE CONTRATO ==================== *@
+@if (EditMod is not null)
+{
+    <div class="modal-back" @onclick="() => EditMod = null">
+        <div class="modal modal-lg" @onclick:stopPropagation>
+            <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px">
+                <div>
+                    <h3 style="margin:0">@(IsNewMod ? "Novo Modelo de Contrato" : $"Editor Simples — {EditMod.Nome}")</h3>
+                    <small class="muted">Clique nas variáveis abaixo para inserir os campos dinâmicos do banco no texto do contrato</small>
+                </div>
+                <button class="btn" @onclick="() => EditMod = null">✕</button>
+            </div>
+
+            <div class="modal-body-scroll">
+                <div class="fld-row" style="grid-template-columns: 2fr 1.3fr 0.7fr 0.6fr">
+                    <label class="fld">Nome do Modelo *
+                        <input @bind="EditMod.Nome" />
+                    </label>
+                    <label class="fld">Tipo de Serviço Vinculado
+                        <select @bind="EditMod.TipoServicoId">
+                            @foreach (var ts in Store.TiposServico)
+                            {
+                                <option value="@ts.Id">@ts.Nome</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="fld">Versão Atual
+                        <input @bind="EditMod.Versao" readonly />
+                    </label>
+                    <label class="fld chk" style="padding-top:18px">
+                        <input type="checkbox" @bind="EditMod.Ativo" /> Ativo
+                    </label>
+                </div>
+
+                @* BARRA DE VARIÁVEIS CLICÁVEIS (PILLS) *@
+                <div class="sub-box" style="gap:6px">
+                    <div class="sec-hdr">🔖 Barra de Variáveis Clicáveis (Clique para inserir no texto)</div>
+
+                    <div class="pill-group">
+                        <small class="muted">Cliente (Aba 1/2):</small>
+                        @foreach (var v in VarsCliente)
+                        {
+                            <button type="button" class="var-pill" @onclick="() => InserirVariavel(v)">@v</button>
+                        }
+                    </div>
+                    <div class="pill-group">
+                        <small class="muted">Medições (Aba 3 Visita):</small>
+                        @foreach (var v in VarsMedicao)
+                        {
+                            <button type="button" class="var-pill" @onclick="() => InserirVariavel(v)">@v</button>
+                        }
+                    </div>
+                    <div class="pill-group">
+                        <small class="muted">Orçamento Aprovado (Aba 3):</small>
+                        @foreach (var v in VarsOrcamento)
+                        {
+                            <button type="button" class="var-pill" @onclick="() => InserirVariavel(v)">@v</button>
+                        }
+                    </div>
+                    <div class="pill-group">
+                        <small class="muted">Serviço / Foro:</small>
+                        @foreach (var v in VarsServicoForo)
+                        {
+                            <button type="button" class="var-pill" @onclick="() => InserirVariavel(v)">@v</button>
+                        }
+                    </div>
+                </div>
+
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <span class="sec-hdr">Texto do Contrato com Placeholders <code>{{...}}</code></span>
+                    <button type="button" class="btn @(PreviewModeloReal ? "primary" : "")" style="padding:4px 10px;font-size:12px"
+                            @onclick="() => PreviewModeloReal = !PreviewModeloReal">
+                        👁 @(PreviewModeloReal ? "Voltar ao Editor de Texto" : "Pré-visualizar com dados reais de exemplo")
+                    </button>
+                </div>
+
+                @if (!PreviewModeloReal)
+                {
+                    <label class="fld">
+                        <textarea rows="12" class="mono" style="font-size:12.5px;line-height:1.45" @bind="EditMod.CorpoTexto" @bind:event="oninput"></textarea>
+                    </label>
+                }
+                else
+                {
+                    <div class="sub-box">
+                        <small class="muted">Exemplo renderizado com os dados reais da Cliente <strong>Mariana Costa (Negociação #6)</strong>:</small>
+                        <pre class="contract-preview">@RenderPreviewModeloAtual()</pre>
+                    </div>
+                }
+            </div>
+
+            <div class="actions end">
+                <button class="btn" @onclick="() => EditMod = null">Cancelar</button>
+                @if (Store.HasPerm("contratos.edit"))
+                {
+                    <button class="btn primary" @onclick="SalvarModelo">
+                        @(IsNewMod ? "Criar Modelo (v1.0)" : "Salvar Nova Versão do Modelo")
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .flt-inp, .flt-sel { background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font-size: 12.5px; font-family: inherit; }
+    .modal.modal-lg { width: min(920px, 96vw); max-height: 90vh; display: flex; flex-direction: column; padding: 20px 24px; }
+    .modal-body-scroll { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
+    .sub-box { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .sec-hdr { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--accent); }
+    .contract-preview { white-space: pre-wrap; font-family: Georgia, serif; font-size: 13px; line-height: 1.55; background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin: 0; max-height: 280px; overflow-y: auto; }
+    .pill-group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .var-pill { background: var(--card); border: 1px solid var(--line); border-radius: 99px; padding: 3px 9px; font-size: 11.5px; font-family: monospace; color: var(--text); cursor: pointer; transition: all .15s; }
+    .var-pill:hover { border-color: var(--accent); background: rgba(197,160,89,.16); }
+    .ct-banner { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 600; margin-bottom: 10px; }
+    .ct-banner.ok { background: rgba(46,158,91,.15); color: var(--ok); }
+    .ct-banner.err { background: rgba(192,57,43,.15); color: var(--err); }
+</style>
 
 @code {
     int Tab;
-    bool IsNew;
-    bool Cancelando;
-    Emit? FormEmit;
-    Mod? FormMod;
+    string BuscaCliente = "";
+    string FiltroStatus = "todos";
+    string FeedbackMsg = "";
+    bool FeedbackErro;
 
-    class Emit
-    {
-        public string Status = "Rascunho"; public string Cliente = ""; public string Modelo = "";
-        public string Enviado = "—"; public string Assinado = "—";
-        public string Cls => Status switch { "Assinado" => "b-ok", "Aguardando" => "b-warn", "Enviado" => "b-info", _ => "b-muted" };
-    }
-    List<Emit> Emitidos =
+    // Emitir Contrato
+    bool ShowModalEmitir;
+    int EmitNegociacaoId = 5;
+    int EmitTemplateId = 3;
+
+    // Visualizar Contrato
+    ContratoEmitidoItem? ContratoVisualizado;
+    bool ShowCancelForm;
+
+    // Editor de Modelo
+    ContratoTemplateItem? EditMod;
+    bool IsNewMod;
+    bool PreviewModeloReal;
+
+    static readonly string[] VarsCliente =
     [
-        new() { Status = "Assinado", Cliente = "Mariana Costa", Modelo = "Prestação de serviço — marcenaria", Enviado = "02/10/2026", Assinado = "04/10/2026" },
-        new() { Status = "Aguardando", Cliente = "Roberto Almeida", Modelo = "Prestação de serviço — marcenaria", Enviado = "24/10/2026" },
-        new() { Status = "Enviado", Cliente = "Camila Ferraz", Modelo = "Prestação de serviço — reforma", Enviado = "26/10/2026" },
-        new() { Status = "Rascunho", Cliente = "Beatriz Nunes", Modelo = "Prestação de serviço — reforma" },
+        "{{cliente.nome}}", "{{cliente.cpf_cnpj}}", "{{cliente.rg}}",
+        "{{cliente.estado_civil}}", "{{cliente.profissao}}", "{{cliente.endereco_completo}}", "{{cliente.celular}}"
     ];
 
-    class Mod
-    {
-        public string Nome = ""; public int Clausulas; public string Versao = "v1.0"; public bool Ativo = true;
-        public string ClausulasTxt { get => Clausulas.ToString(); set => Clausulas = int.TryParse(value, out var v) ? v : Clausulas; }
-    }
-    List<Mod> Modelos =
+    static readonly string[] VarsMedicao =
     [
-        new() { Nome = "Prestação de serviço — marcenaria", Clausulas = 14, Versao = "v2.1" },
-        new() { Nome = "Prestação de serviço — reforma", Clausulas = 18, Versao = "v1.4" },
-        new() { Nome = "Termo de entrega e garantia", Clausulas = 8, Versao = "v1.0" },
-        new() { Nome = "Contrato antigo (2024)", Clausulas = 12, Versao = "v1.0", Ativo = false },
+        "{{medicao.data}}", "{{medicao.ambientes_medidas}}", "{{medicao.observacoes}}"
     ];
 
-    void Novo()
+    static readonly string[] VarsOrcamento =
+    [
+        "{{orcamento.versao}}", "{{orcamento.valor_total}}", "{{orcamento.condicoes_pagamento}}",
+        "{{orcamento.prazo_execucao_dias}}", "{{orcamento.escopo_resumo}}"
+    ];
+
+    static readonly string[] VarsServicoForo =
+    [
+        "{{servico.tipo}}", "{{servico.endereco_execucao}}", "{{contrato.data_emissao}}", "{{contrato.cidade_foro}}"
+    ];
+
+    List<ContratoEmitidoItem> FilteredEmitidos => Store.ContratosEmitidos
+        .Where(c =>
+        {
+            if (FiltroStatus != "todos" && c.Status != FiltroStatus) return false;
+            if (!string.IsNullOrWhiteSpace(BuscaCliente))
+            {
+                var cli = Store.GetCliente(c.ClienteId);
+                var q = BuscaCliente.Trim();
+                bool match = (cli?.Nome.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
+                          || c.Id.ToString().Contains(q);
+                if (!match) return false;
+            }
+            return true;
+        })
+        .ToList();
+
+    void AbrirModalEmitir()
     {
-        IsNew = true; Cancelando = false;
-        if (Tab == 0) FormEmit = new Emit(); else FormMod = new Mod();
+        var negComOrc = Store.Negociacoes.FirstOrDefault(n => n.Orcamentos.Any(o => o.Status == "aceito"))
+                     ?? Store.Negociacoes.FirstOrDefault();
+        if (negComOrc is not null)
+        {
+            EmitNegociacaoId = negComOrc.Id;
+            EmitTemplateId = Store.ModelosContrato.FirstOrDefault(m => m.TipoServicoId == negComOrc.TipoServicoId)?.Id
+                          ?? Store.ModelosContrato.First().Id;
+        }
+        ShowModalEmitir = true;
     }
-    void EditarEmit(Emit c) { FormEmit = c; IsNew = false; Cancelando = false; }
-    void EditarMod(Mod m) { FormMod = m; IsNew = false; }
-    void Fechar() { FormEmit = null; FormMod = null; Cancelando = false; }
+
+    void OnNegociacaoEmitChange()
+    {
+        var neg = Store.Negociacoes.FirstOrDefault(n => n.Id == EmitNegociacaoId);
+        if (neg is not null)
+        {
+            var tpl = Store.ModelosContrato.FirstOrDefault(m => m.TipoServicoId == neg.TipoServicoId);
+            if (tpl is not null) EmitTemplateId = tpl.Id;
+        }
+    }
+
+    void ConfirmarEmissaoContrato()
+    {
+        var neg = Store.Negociacoes.FirstOrDefault(n => n.Id == EmitNegociacaoId);
+        if (neg is null) return;
+        var cli = Store.GetCliente(neg.ClienteId);
+        var orc = neg.Orcamentos.LastOrDefault();
+        if (orc is not null) orc.Status = "aceito";
+
+        var novoId = Store.ContratosEmitidos.Count > 0 ? Store.ContratosEmitidos.Max(x => x.Id) + 1 : 101;
+        var novo = new ContratoEmitidoItem
+        {
+            Id = novoId,
+            ClienteId = neg.ClienteId,
+            NegociacaoId = neg.Id,
+            OrcamentoId = orc?.Id ?? 0,
+            TemplateId = EmitTemplateId,
+            Status = "aguardando",
+            EnviadoEm = "30/10/2026",
+            HashDoc = $"sha256:{Guid.NewGuid().ToString("N")[..16]}",
+            PdfNome = $"Contrato_{novoId}_{cli?.Nome.Replace(" ", "")}.pdf",
+            TextoRenderizado = Store.RenderContratoTexto(neg.ClienteId, neg.Id, EmitTemplateId)
+        };
+        Store.ContratosEmitidos.Insert(0, novo);
+        cli?.Timeline.Add(new("30/10/2026 12:00", Store.CurrentRole, $"Contrato #{novoId} emitido e enviado via {Store.SignatureProviderAtivo} (Negociação #{neg.Id})"));
+        ShowModalEmitir = false;
+        FeedbackErro = false;
+        FeedbackMsg = $"Contrato #{novoId} gerado com dados reais do banco e enviado para assinatura ({Store.SignatureProviderAtivo})!";
+        Store.NotifyStateChanged();
+    }
+
+    void VisualizarContrato(ContratoEmitidoItem ct)
+    {
+        ContratoVisualizado = ct;
+        ShowCancelForm = false;
+    }
+
+    void SimularAssinatura(ContratoEmitidoItem ct)
+    {
+        ct.Status = "assinado";
+        ct.AssinadoEm = "30/10/2026";
+        var cli = Store.GetCliente(ct.ClienteId);
+        cli?.Timeline.Add(new("30/10/2026 12:10", $"Webhook ({Store.SignatureProviderAtivo})", $"Contrato #{ct.Id} ASSINADO digitalmente pelo cliente (Hash {ct.HashDoc})"));
+        FeedbackErro = false;
+        FeedbackMsg = $"✓ Assinatura do Contrato #{ct.Id} confirmada! (Negociação #{ct.NegociacaoId} pronta para Ganho no Funil).";
+        Store.NotifyStateChanged();
+    }
+
+    void ConfirmarCancelamentoContrato()
+    {
+        if (ContratoVisualizado is null) return;
+        if (string.IsNullOrWhiteSpace(ContratoVisualizado.MotivoCancelamento))
+        {
+            FeedbackErro = true;
+            FeedbackMsg = "Informe a justificativa obrigatória para cancelar o contrato.";
+            return;
+        }
+        ContratoVisualizado.Status = "cancelado";
+        var cli = Store.GetCliente(ContratoVisualizado.ClienteId);
+        cli?.Timeline.Add(new("30/10/2026 12:15", Store.CurrentRole, $"Contrato #{ContratoVisualizado.Id} CANCELADO. Motivo: {ContratoVisualizado.MotivoCancelamento}"));
+        ContratoVisualizado = null;
+        FeedbackErro = false;
+        FeedbackMsg = "Contrato cancelado e registrado na auditoria.";
+        Store.NotifyStateChanged();
+    }
+
+    void NovoModelo()
+    {
+        IsNewMod = true;
+        PreviewModeloReal = false;
+        EditMod = new ContratoTemplateItem
+        {
+            Id = Store.ModelosContrato.Count > 0 ? Store.ModelosContrato.Max(x => x.Id) + 1 : 1,
+            TipoServicoId = 1,
+            Nome = "Novo Modelo de Contrato",
+            Versao = "v1.0",
+            Ativo = true,
+            CorpoTexto = "CONTRATO DE PRESTAÇÃO DE SERVIÇOS\n\nCONTRATANTE: {{cliente.nome}}, CPF {{cliente.cpf_cnpj}}, residente em {{cliente.endereco_completo}}.\n\nOBJETO: {{servico.tipo}}.\nMEDIÇÕES ({{medicao.data}}): {{medicao.ambientes_medidas}}\nVALOR APROVADO (v{{orcamento.versao}}): {{orcamento.valor_total}} — {{orcamento.condicoes_pagamento}}.\nPRAZO: {{orcamento.prazo_execucao_dias}} dias.\n\n{{contrato.cidade_foro}}, {{contrato.data_emissao}}."
+        };
+    }
+
+    void EditarModelo(ContratoTemplateItem m)
+    {
+        IsNewMod = false;
+        PreviewModeloReal = false;
+        EditMod = m;
+    }
+
+    void InserirVariavel(string tag)
+    {
+        if (EditMod is null) return;
+        EditMod.CorpoTexto = (EditMod.CorpoTexto ?? "") + " " + tag;
+    }
+
+    string RenderPreviewModeloAtual()
+    {
+        if (EditMod is null) return "";
+        if (IsNewMod && !Store.ModelosContrato.Contains(EditMod))
+        {
+            Store.ModelosContrato.Add(EditMod);
+            var rendered = Store.RenderContratoTexto(1, 6, EditMod.Id);
+            Store.ModelosContrato.Remove(EditMod);
+            return rendered;
+        }
+        return Store.RenderContratoTexto(1, 6, EditMod.Id);
+    }
+
+    void SalvarModelo()
+    {
+        if (EditMod is null) return;
+        if (IsNewMod)
+        {
+            Store.ModelosContrato.Add(EditMod);
+            FeedbackMsg = $"Novo modelo '{EditMod.Nome}' ({EditMod.Versao}) criado!";
+        }
+        else
+        {
+            // Incrementa versão (ex: v2.2 -> v2.3)
+            var ver = EditMod.Versao.TrimStart('v');
+            var parts = ver.Split('.');
+            if (parts.Length == 2 && int.TryParse(parts[1], out var minor))
+                EditMod.Versao = $"v{parts[0]}.{minor + 1}";
+            else
+                EditMod.Versao = $"{EditMod.Versao}.1";
+
+            FeedbackMsg = $"Modelo '{EditMod.Nome}' salvo na nova versão {EditMod.Versao}!";
+        }
+        FeedbackErro = false;
+        EditMod = null;
+        Store.NotifyStateChanged();
+    }
+
+    static string GetStatusBadge(string status) => status switch
+    {
+        "assinado" => "b-ok",
+        "aguardando" => "b-warn",
+        "enviado" => "b-info",
+        "cancelado" => "b-err",
+        _ => "b-muted"
+    };
 }

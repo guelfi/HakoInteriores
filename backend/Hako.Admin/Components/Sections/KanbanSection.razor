@@ -1,78 +1,507 @@
-<div class="obra-head">
-    <label>Obra:</label>
-    <select>
-        <option>Cozinha planejada — Mariana Costa (Apt 402)</option>
-        <option>Dormitório planejado — Roberto Almeida</option>
-        <option>Banheiro completo — Beatriz Nunes</option>
-    </select>
-</div>
-<p class="hint">Arraste ou toque num card e depois na coluna de destino · cor = saúde do prazo: ⚪ a iniciar · 🟢 no prazo · 🟡 atenção · 🔴 atrasada · 🔵 concluída</p>
+@inject MockErpStore Store
 
-<div class="board-wrap">
-    <div class="board kanban">
-        @foreach (var col in Colunas)
+<style>
+  .obra-head { flex-wrap: wrap; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+  .obra-pills { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .kan-alert {
+    background: rgba(192,57,43,.14); border: 1px solid var(--err); color: var(--err);
+    border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px;
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  }
+  .parent-group {
+    display: flex; flex-direction: column; gap: 6px;
+    background: rgba(197,160,89,.07); border: 1px dashed var(--accent);
+    border-radius: 12px; padding: 8px;
+  }
+  .subcard {
+    margin-left: 12px; background: var(--card); border: 1px solid var(--line);
+    border-left: 4px solid var(--accent); border-radius: 8px; padding: 8px 10px;
+    display: flex; flex-direction: column; gap: 4px; font-size: 12px;
+    box-shadow: 0 2px 6px rgba(0,0,0,.04);
+  }
+  .subcard-parent-tag {
+    font-size: 10.5px; color: var(--accent); font-weight: 700;
+    letter-spacing: .03em; text-transform: uppercase;
+  }
+  .kcard-actions {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 4px; margin-top: 4px; padding-top: 4px; border-top: 1px dashed var(--line);
+  }
+  .kbtn {
+    background: var(--card); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 2px 7px; font-size: 11px; cursor: pointer;
+    font-family: inherit;
+  }
+  .kbtn:hover { border-color: var(--accent); background: rgba(197,160,89,.15); }
+  .kbtn.ok { background: var(--ok); border-color: var(--ok); color: #fff; font-weight: 600; }
+  .subtasks-hover-wrap { position: relative; }
+  .subtasks-popover {
+    display: none; position: absolute; left: 0; right: 0; top: calc(100% + 4px);
+    background: var(--card); border: 1px solid var(--accent); border-radius: 10px;
+    padding: 10px 12px; box-shadow: 0 12px 28px rgba(0,0,0,.24); z-index: 40;
+    font-size: 12px; color: var(--text);
+  }
+  .subtasks-hover-wrap:hover .subtasks-popover,
+  .subtasks-hover-wrap.open .subtasks-popover {
+    display: block;
+  }
+  .legend-bar {
+    display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+    font-size: 11.5px; color: var(--muted); margin-bottom: 10px;
+  }
+  .legend-item { display: inline-flex; align-items: center; gap: 5px; }
+  .l-box { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+</style>
+
+@{
+  var emAndamento = Store.Servicos.Where(s => s.Status == "andamento").ToList();
+  var servico = emAndamento.FirstOrDefault(s => s.Id == Store.SelectedServicoKanbanId) ?? emAndamento.FirstOrDefault();
+  if (servico is not null && Store.SelectedServicoKanbanId != servico.Id)
+  {
+    Store.SelectedServicoKanbanId = servico.Id;
+  }
+}
+
+<p class="hint">
+  Kanban operacional por Serviço · arraste um card (ou clique no card e depois na coluna / botões ◀ ▶) para atualizar o progresso. Tarefas com sub-tarefas estacionam em <strong>Iniciada</strong> enquanto as filhas avançam; ao ir para <strong>Entregue</strong>, passe o mouse para inspecionar as sub-tarefas concluídas.
+</p>
+
+@if (emAndamento.Count == 0 || servico is null)
+{
+  <div class="placeholder">
+    <div class="ph-icon">▦</div>
+    <h2>Nenhum serviço em andamento</h2>
+    <p>Todos os serviços estão encerrados, suspensos ou cancelados. Reative ou crie um serviço na tela de Serviços.</p>
+  </div>
+}
+else
+{
+  var cli = Store.GetCliente(servico.ClienteId);
+  var tipo = Store.GetTipoServico(servico.TipoServicoId);
+  var pctCalc = Store.GetPctCalculadoServico(servico);
+  var pctExib = Store.GetPctExibidoServico(servico);
+  var pronto = Store.IsProntoParaFinalizar(servico);
+  var podeMover = Store.HasPerm("kanban.move") || Store.HasPerm("servicos.move_kanban") || Store.HasPerm("servicos.edit");
+
+  <div class="obra-head">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <label for="sel-srv-kan"><strong>Serviço em andamento:</strong></label>
+      <select id="sel-srv-kan" @bind="Store.SelectedServicoKanbanId" @bind:after="LimparMensagens">
+        @foreach (var s in emAndamento)
         {
-            <div class="bcol @(DragOver == col || (Sel is not null && Sel.Value.Col != col) ? "drop" : "")"
-                 @onclick="() => ToqueCol(col)"
-                 @ondragover="() => DragOver = col" @ondragover:preventDefault
-                 @ondrop="() => Drop(col)" @ondragleave="() => DragOver = null">
-                <header>@col.Nome <span class="count">@col.Etapas.Count</span></header>
-                @foreach (var e in col.Etapas)
-                {
-                    <div class="kcard @e.Saude @(Sel?.Etapa == e ? "picked" : "")"
-                         draggable="true" @ondragstart="() => Drag = (col, e)"
-                         @onclick="() => ToqueCard(col, e)" @onclick:stopPropagation>
-                        <b>@e.Nome</b>
-                        <small>@e.Resp</small>
-                        <small class="mono muted">prev: @e.Prev</small>
-                    </div>
-                }
-            </div>
+          var c = Store.GetCliente(s.ClienteId);
+          var t = Store.GetTipoServico(s.TipoServicoId);
+          <option value="@s.Id">
+            #@s.Id · @t?.Nome — @c?.Nome (@Store.GetPctExibidoServico(s)%) @(Store.IsProntoParaFinalizar(s) ? "★ 100%" : "")
+          </option>
         }
+      </select>
     </div>
+
+    <div class="obra-pills">
+      <span class="badge b-muted">Fase: <strong>@Store.GetFaseAtualServico(servico)</strong></span>
+      <span class="badge b-func">Kanban: <strong>@pctCalc%</strong> · Exibido: <strong>@pctExib%</strong></span>
+      <span class="badge b-muted">Entrega: <strong>@servico.DtEntrega.ToString("dd/MM/yyyy")</strong></span>
+      <button class="btn" @onclick="() => AbrirNoGantt(servico)">📅 Ver no Cronograma Gantt</button>
+    </div>
+  </div>
+
+  <div class="legend-bar">
+    <strong>Saúde do prazo (Hoje: 30/10/2026):</strong>
+    <span class="legend-item"><span class="l-box" style="background:#bbb"></span> Branca (A iniciar no prazo)</span>
+    <span class="legend-item"><span class="l-box" style="background:var(--ok)"></span> Verde (&lt;@Store.KanbanAlertaPct% do prazo)</span>
+    <span class="legend-item"><span class="l-box" style="background:var(--warn)"></span> Amarela (≥@Store.KanbanAlertaPct% ou deveria iniciar)</span>
+    <span class="legend-item"><span class="l-box" style="background:var(--err)"></span> Vermelha (Prazo vencido)</span>
+    <span class="legend-item"><span class="l-box" style="background:var(--info)"></span> Azul (Finalizada / Entregue)</span>
+  </div>
+
+  @if (pronto)
+  {
+    <div class="kan-alert" style="background:rgba(46,158,91,.14);border-color:var(--ok);color:var(--ok)">
+      <div>
+        <strong>★ 100% das tarefas estão em Entregue!</strong>
+        Este serviço está destacado na lista de Serviços aguardando confirmação de entrega final (ou adição de tarefa de vistoria).
+      </div>
+      <button class="btn primary" @onclick='() => { Store.ActiveSection = "servicos"; Store.NotifyStateChanged(); }'>
+        Ir para Serviços e Confirmar Entrega
+      </button>
+    </div>
+  }
+
+  @if (!string.IsNullOrEmpty(MensagemErro))
+  {
+    <div class="kan-alert">
+      <span>🚫 <strong>Movimento bloqueado:</strong> @MensagemErro</span>
+      <button class="btn" style="padding:3px 9px" @onclick='() => MensagemErro = ""'>✕ Fechar</button>
+    </div>
+  }
+
+  <div class="board-wrap">
     <div class="rotate-hint">
-        <span class="rot-ico">↻</span>
-        <p>Gire o dispositivo para visualizar o board</p>
+      <div class="rot-ico">⟳</div>
+      <strong>Gire o aparelho</strong>
+      <p>O Kanban de Serviços utiliza 5 colunas horizontais — melhor visualizado em modo paisagem.</p>
     </div>
-</div>
+
+    <div class="board">
+      @foreach (var col in Colunas)
+      {
+        var pctCol = MockErpStore.GetPctColuna(col);
+        // Tarefas de topo nesta coluna
+        var toposNaColuna = servico.Etapas
+          .Where(e => e.ParentId == null && e.Coluna == col)
+          .OrderBy(e => e.Ordem)
+          .ToList();
+
+        // Sub-tarefas que estão em "Em andamento" ou "Finalizada" cujo pai está em "Iniciada"
+        var subTarefasNaColuna = (col is "Em andamento" or "Finalizada")
+          ? servico.Etapas
+              .Where(e => e.ParentId != null && e.Coluna == col)
+              .Where(e =>
+              {
+                var pai = servico.Etapas.FirstOrDefault(p => p.Id == e.ParentId);
+                return pai is not null && pai.Coluna == "Iniciada";
+              })
+              .OrderBy(e => e.ParentId).ThenBy(e => e.Ordem)
+              .ToList()
+          : [];
+
+        var totalCardsColuna = toposNaColuna.Count + subTarefasNaColuna.Count;
+
+        <div class="bcol @(DropCol == col ? "drop" : "")"
+             @ondragover="e => DropCol = col"
+             @ondragover:preventDefault="true"
+             @ondrop="() => OnDropColuna(servico, col)"
+             @onclick="() => OnClickColuna(servico, col)">
+          <header>
+            <span>@col (@pctCol%)</span>
+            <span class="count">@totalCardsColuna</span>
+          </header>
+
+          @* 1. Renderizar Tarefas de Topo na coluna *@
+          @foreach (var t in toposNaColuna)
+          {
+            var filhas = servico.Etapas.Where(x => x.ParentId == t.Id).OrderBy(x => x.Ordem).ToList();
+            var temFilhas = filhas.Count > 0;
+            var saude = Store.GetSaudeEtapa(t);
+            var pctTarefa = Store.GetPctEtapa(servico, t);
+            var pred = t.PredecessoraId is int pid ? servico.Etapas.FirstOrDefault(x => x.Id == pid) : null;
+            var predBloqueada = pred is not null && !IsPredecessoraConcluida(servico, pred);
+
+            @if (temFilhas && col == "Iniciada")
+            {
+              // REGRA CRÍTICA: Tarefa Pai estacionada em Iniciada + sub-tarefas abaixo dela!
+              var filhasConcluidas = filhas.Count(f => f.Coluna is "Finalizada" or "Entregue");
+              var todasFilhasProntas = filhas.All(f => f.Coluna is "Finalizada" or "Entregue");
+
+              <div class="parent-group">
+                <div class="kcard @saude.CssClass @(PickedEtapaId == t.Id ? "picked" : "")"
+                     draggable="@(podeMover ? "true" : "false")"
+                     @ondragstart="() => OnDragStart(t)"
+                     @onclick:stopPropagation="true"
+                     @onclick="() => TogglePick(t)">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px">
+                    <strong>#@t.Ordem @t.Nome</strong>
+                    <span class="badge b-func mono">@pctTarefa%</span>
+                  </div>
+                  <div style="display:flex;gap:4px;flex-wrap:wrap;margin:2px 0">
+                    <span class="badge b-info">📂 Tarefa Pai · @filhasConcluidas/@filhas.Count sub-tarefas concluídas</span>
+                    @if (todasFilhasProntas)
+                    {
+                      <span class="badge b-ok" style="background:var(--ok);color:#fff">
+                        ✓ Todas as sub-tarefas finalizadas! Pronta p/ Entregue
+                      </span>
+                    }
+                  </div>
+                  <div class="pbar" style="margin:3px 0"><i style="--p:@pctTarefa"></i></div>
+                  <small>👤 @t.ResponsavelNome · 📅 @t.DtInicioPrevista.ToString("dd/MM") → @t.DtPrevista.ToString("dd/MM") (@t.DuracaoDias d)</small>
+
+                  @if (podeMover)
+                  {
+                    <div class="kcard-actions" @onclick:stopPropagation="true">
+                      <button class="kbtn" title="Voltar para A iniciar" @onclick='() => MoverDireto(servico, t, "A iniciar")'>◀ A iniciar</button>
+                      @if (todasFilhasProntas)
+                      {
+                        <button class="kbtn ok" @onclick='() => MoverDireto(servico, t, "Entregue")'>Mover p/ Entregue (100%) ▶▶</button>
+                      }
+                      else
+                      {
+                        <small class="muted" style="font-size:10.5px">Estacionada até concluir filhas</small>
+                      }
+                    </div>
+                  }
+                </div>
+
+                @* Sub-tarefas abaixo do card pai em Iniciada *@
+                @foreach (var f in filhas)
+                {
+                  var saudeF = Store.GetSaudeEtapa(f);
+                  var pctF = MockErpStore.GetPctColuna(f.Coluna);
+
+                  @if (f.Coluna == "Iniciada")
+                  {
+                    <div class="subcard kcard @saudeF.CssClass @(PickedEtapaId == f.Id ? "picked" : "")"
+                         draggable="@(podeMover ? "true" : "false")"
+                         @ondragstart="() => OnDragStart(f)"
+                         @onclick:stopPropagation="true"
+                         @onclick="() => TogglePick(f)">
+                      <div class="subcard-parent-tag">↳ Sub-tarefa @t.Ordem.@f.Ordem (em Iniciada · @pctF%)</div>
+                      <strong>@f.Nome</strong>
+                      <small>👤 @f.ResponsavelNome · @f.DtInicioPrevista.ToString("dd/MM") → @f.DtPrevista.ToString("dd/MM") (@f.DuracaoDias d)</small>
+                      @if (podeMover)
+                      {
+                        <div class="kcard-actions" @onclick:stopPropagation="true">
+                          <span class="muted" style="font-size:10.5px">Avançar sub-tarefa:</span>
+                          <button class="kbtn" @onclick='() => MoverDireto(servico, f, "Em andamento")'>Em andamento (50%) ▶</button>
+                        </div>
+                      }
+                    </div>
+                  }
+                  else
+                  {
+                    @* Indicador compacto de que esta sub-tarefa já avançou para Em andamento ou Finalizada *@
+                    <div class="subcard" style="opacity:.82;border-left-color:@(f.Coluna == "Finalizada" ? "var(--info)" : "var(--ok)")"
+                         @onclick:stopPropagation="true">
+                      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+                        <span>↳ <strong>@t.Ordem.@f.Ordem</strong> @f.Nome</span>
+                        <span class="badge @(f.Coluna == "Finalizada" ? "b-ok" : "b-info")">@f.Coluna (@pctF%)</span>
+                      </div>
+                    </div>
+                  }
+                }
+              </div>
+            }
+            else if (temFilhas && col == "Entregue")
+            {
+              // REGRA CRÍTICA: Quando a Tarefa Pai está em Entregue (100%), as sub-tarefas NÃO aparecem como cards separados!
+              // Ficam ocultas dentro do popover ao passar o mouse (hover) ou tocar no card pai!
+              var isOpen = HoverOpenParentId == t.Id;
+              <div class="kcard @saude.CssClass subtasks-hover-wrap @(isOpen ? "open" : "") @(PickedEtapaId == t.Id ? "picked" : "")"
+                   draggable="@(podeMover ? "true" : "false")"
+                   @ondragstart="() => OnDragStart(t)"
+                   @onclick:stopPropagation="true"
+                   @onclick="() => ToggleHoverPopover(t.Id)">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px">
+                  <strong>#@t.Ordem @t.Nome</strong>
+                  <span class="badge b-ok mono">100%</span>
+                </div>
+                <span class="badge b-info" style="align-self:flex-start">
+                  📂 @filhas.Count sub-tarefas concluídas (passe o mouse / toque) ▾
+                </span>
+                <small>
+                  👤 @t.ResponsavelNome · ✓ Entregue em @(t.DtRealizada?.ToString("dd/MM/yyyy") ?? "—")
+                </small>
+
+                <div class="subtasks-popover" @onclick:stopPropagation="true">
+                  <strong style="display:block;margin-bottom:6px;color:var(--accent)">
+                    Sub-tarefas concluídas de "@t.Nome":
+                  </strong>
+                  <ul style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:4px">
+                    @foreach (var f in filhas)
+                    {
+                      <li>
+                        ✓ <strong>@t.Ordem.@f.Ordem @f.Nome</strong> (@f.DuracaoDias d · @f.ResponsavelNome)
+                        — concluída em <span class="mono">@(f.DtRealizada?.ToString("dd/MM/yyyy") ?? t.DtRealizada?.ToString("dd/MM/yyyy") ?? "no prazo")</span>
+                      </li>
+                    }
+                  </ul>
+                </div>
+              </div>
+            }
+            else
+            {
+              // Tarefa de topo comum (ou tarefa pai ainda em "A iniciar")
+              <div class="kcard @saude.CssClass @(PickedEtapaId == t.Id ? "picked" : "")"
+                   draggable="@(podeMover ? "true" : "false")"
+                   @ondragstart="() => OnDragStart(t)"
+                   @onclick:stopPropagation="true"
+                   @onclick="() => TogglePick(t)">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px">
+                  <strong>#@t.Ordem @t.Nome</strong>
+                  <span class="badge b-muted mono">@pctTarefa%</span>
+                </div>
+
+                @if (pred is not null)
+                {
+                  <span class="badge @(predBloqueada ? "b-err" : "b-muted")" style="align-self:flex-start">
+                    @(predBloqueada ? "🔒" : "🔗") Depende de: #@pred.Ordem @pred.Nome
+                  </span>
+                }
+
+                @if (temFilhas)
+                {
+                  <span class="badge b-info" style="align-self:flex-start">
+                    📂 Contém @filhas.Count sub-tarefas
+                  </span>
+                }
+
+                <small>
+                  👤 @t.ResponsavelNome · 📅 @t.DtInicioPrevista.ToString("dd/MM") → @t.DtPrevista.ToString("dd/MM") (@t.DuracaoDias d)
+                </small>
+                @if (t.DtRealizada is DateOnly dtR && col is "Finalizada" or "Entregue")
+                {
+                  <small style="color:var(--ok)">✓ Realizada em @dtR.ToString("dd/MM/yyyy")</small>
+                }
+
+                @if (podeMover)
+                {
+                  var idx = Array.IndexOf(Colunas, col);
+                  <div class="kcard-actions" @onclick:stopPropagation="true">
+                    @if (idx > 0)
+                    {
+                      var ant = temFilhas && col == "Entregue" ? "Iniciada" : Colunas[idx - 1];
+                      <button class="kbtn" @onclick="() => MoverDireto(servico, t, ant)">◀ @ant</button>
+                    }
+                    else
+                    {
+                      <span></span>
+                    }
+                    @if (idx < Colunas.Length - 1)
+                    {
+                      var prox = Colunas[idx + 1];
+                      <button class="kbtn" @onclick="() => MoverDireto(servico, t, prox)">@prox ▶</button>
+                    }
+                  </div>
+                }
+              </div>
+            }
+          }
+
+          @* 2. Renderizar Sub-tarefas nas colunas "Em andamento" (50%) e "Finalizada" (90%) *@
+          @foreach (var sub in subTarefasNaColuna)
+          {
+            var pai = servico.Etapas.First(p => p.Id == sub.ParentId);
+            var saudeSub = Store.GetSaudeEtapa(sub);
+            var pctSub = MockErpStore.GetPctColuna(sub.Coluna);
+
+            <div class="subcard kcard @saudeSub.CssClass @(PickedEtapaId == sub.Id ? "picked" : "")"
+                 draggable="@(podeMover ? "true" : "false")"
+                 @ondragstart="() => OnDragStart(sub)"
+                 @onclick:stopPropagation="true"
+                 @onclick="() => TogglePick(sub)">
+              <div class="subcard-parent-tag">↳ Sub-tarefa de: #@pai.Ordem @pai.Nome</div>
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px">
+                <strong>@pai.Ordem.@sub.Ordem @sub.Nome</strong>
+                <span class="badge b-func mono">@pctSub%</span>
+              </div>
+              <small>👤 @sub.ResponsavelNome · 📅 @sub.DtInicioPrevista.ToString("dd/MM") → @sub.DtPrevista.ToString("dd/MM") (@sub.DuracaoDias d)</small>
+              @if (sub.DtRealizada is DateOnly dtSub && sub.Coluna == "Finalizada")
+              {
+                <small style="color:var(--ok)">✓ Concluída em @dtSub.ToString("dd/MM/yyyy")</small>
+              }
+
+              @if (podeMover)
+              {
+                <div class="kcard-actions" @onclick:stopPropagation="true">
+                  @if (col == "Em andamento")
+                  {
+                    <button class="kbtn" @onclick='() => MoverDireto(servico, sub, "Iniciada")'>◀ Iniciada (10%)</button>
+                    <button class="kbtn ok" @onclick='() => MoverDireto(servico, sub, "Finalizada")'>Finalizada (90%) ▶</button>
+                  }
+                  else if (col == "Finalizada")
+                  {
+                    <button class="kbtn" @onclick='() => MoverDireto(servico, sub, "Em andamento")'>◀ Em andamento (50%)</button>
+                    <span class="badge b-ok">Pronta ✓</span>
+                  }
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+    </div>
+  </div>
+}
 
 @code {
-    record Etapa(string Nome, string Resp, string Prev, string Saude);
-    class Col { public required string Nome; public List<Etapa> Etapas = []; }
+  private static readonly string[] Colunas =
+  [
+    "A iniciar",
+    "Iniciada",
+    "Em andamento",
+    "Finalizada",
+    "Entregue"
+  ];
 
-    (Col Col, Etapa Etapa)? Drag;
-    (Col Col, Etapa Etapa)? Sel;
-    Col? DragOver;
+  private int? DraggedEtapaId { get; set; }
+  private int? PickedEtapaId { get; set; }
+  private int? HoverOpenParentId { get; set; }
+  private string? DropCol { get; set; }
+  private string MensagemErro { get; set; } = "";
 
-    void ToqueCard(Col col, Etapa etapa) => Sel = Sel?.Etapa == etapa ? null : (col, etapa);
+  private void LimparMensagens()
+  {
+    MensagemErro = "";
+    PickedEtapaId = null;
+    DraggedEtapaId = null;
+  }
 
-    void ToqueCol(Col destino)
+  private bool IsPredecessoraConcluida(ServicoItem s, ServicoEtapaItem pred)
+  {
+    bool predTemFilhas = s.Etapas.Any(x => x.ParentId == pred.Id);
+    return predTemFilhas ? pred.Coluna == "Entregue" : pred.Coluna is "Finalizada" or "Entregue";
+  }
+
+  private void OnDragStart(ServicoEtapaItem e)
+  {
+    DraggedEtapaId = e.Id;
+    PickedEtapaId = e.Id;
+  }
+
+  private void TogglePick(ServicoEtapaItem e)
+  {
+    PickedEtapaId = PickedEtapaId == e.Id ? null : e.Id;
+  }
+
+  private void ToggleHoverPopover(int parentId)
+  {
+    HoverOpenParentId = HoverOpenParentId == parentId ? null : parentId;
+  }
+
+  private void OnDropColuna(ServicoItem s, string destino)
+  {
+    DropCol = null;
+    var id = DraggedEtapaId ?? PickedEtapaId;
+    if (id is null) return;
+    var etapa = s.Etapas.FirstOrDefault(x => x.Id == id.Value);
+    DraggedEtapaId = null;
+    PickedEtapaId = null;
+    if (etapa is null) return;
+    MoverDireto(s, etapa, destino);
+  }
+
+  private void OnClickColuna(ServicoItem s, string destino)
+  {
+    if (PickedEtapaId is null) return;
+    var etapa = s.Etapas.FirstOrDefault(x => x.Id == PickedEtapaId.Value);
+    PickedEtapaId = null;
+    if (etapa is null) return;
+    MoverDireto(s, etapa, destino);
+  }
+
+  private void MoverDireto(ServicoItem s, ServicoEtapaItem etapa, string destino)
+  {
+    if (!Store.HasPerm("servicos.move_kanban") && !Store.HasPerm("servicos.edit"))
     {
-        if (Sel is { } s && s.Col != destino)
-        {
-            s.Col.Etapas.Remove(s.Etapa);
-            destino.Etapas.Add(s.Etapa);
-        }
-        Sel = null;
+      MensagemErro = "Seu perfil atual possui acesso somente leitura ao Kanban.";
+      return;
     }
 
-    void Drop(Col destino)
+    if (!Store.TryMoverEtapaKanban(s, etapa, destino, out var msg))
     {
-        if (Drag is { } d && d.Col != destino)
-        {
-            d.Col.Etapas.Remove(d.Etapa);
-            destino.Etapas.Add(d.Etapa);
-        }
-        Drag = null;
-        DragOver = null;
+      MensagemErro = msg;
     }
+    else
+    {
+      MensagemErro = "";
+    }
+  }
 
-    List<Col> Colunas =
-    [
-        new() { Nome = "A iniciar", Etapas = [new("Acabamento e limpeza", "Equipe", "10/11", "h-white")] },
-        new() { Nome = "Iniciada", Etapas = [new("Montagem/instalação", "João Marceneiro", "04/11", "h-green")] },
-        new() { Nome = "Em andamento", Etapas = [new("Produção marcenaria", "João Marceneiro", "30/10", "h-yellow"), new("Instalação pedras", "Marmoraria Itália", "28/10", "h-red")] },
-        new() { Nome = "Finalizada", Etapas = [new("Plano de corte", "Pedro Ajudante", "22/10", "h-blue")] },
-        new() { Nome = "Entregue", Etapas = [new("Medição no local", "João Marceneiro", "08/10", "h-blue"), new("Aprovação cliente", "Mariana Costa", "15/10", "h-blue")] },
-    ];
+  private void AbrirNoGantt(ServicoItem s)
+  {
+    Store.SelectedServicoCronogramaId = s.Id;
+    Store.SelectedServicoKanbanId = s.Id;
+    Store.ActiveSection = "cronograma";
+    Store.NotifyStateChanged();
+  }
 }

@@ -1,45 +1,657 @@
-<section class="widgets">
-    @if (HasPerm("funil.view"))
+@inject MockErpStore Store
+@inject IJSRuntime JS
+@implements IDisposable
+
+@{
+    var role = Store.CurrentRole;
+
+    // Métricas Comerciais
+    var negsAtivas = Store.Negociacoes.Where(n => n.Status == "em_andamento" && n.Estagio is not ("Ganho" or "Perdido")).ToList();
+    var leadsNovos = negsAtivas.Count(n => n.Estagio is "Novo" or "Contato");
+    var todasVisitas = Store.Negociacoes.SelectMany(n => n.Visitas).ToList();
+    var visitasRealizadas = todasVisitas.Count(v => v.Status == "realizada");
+    var visitasAgendadas = todasVisitas.Count(v => v.Status == "agendada");
+    var orcsEnviados = Store.Negociacoes.SelectMany(n => n.Orcamentos).Where(o => o.Status == "enviado").ToList();
+    var orcsAceitos = Store.Negociacoes.SelectMany(n => n.Orcamentos).Where(o => o.Status == "aceito").ToList();
+
+    var cliAtivos = Store.Clientes.Count(c => !c.IsLead && c.Status == "ativo");
+    var leadsAtivos = Store.Clientes.Count(c => c.IsLead && c.Status == "ativo");
+    var contratosPendentes = Store.ContratosEmitidos.Count(c => c.Status is "rascunho" or "enviado" or "aguardando");
+    var contratosAssinados = Store.ContratosEmitidos.Count(c => c.Status == "assinado");
+
+    // Métricas de Serviços / Kanban
+    var ativos = Store.Servicos.Where(s => s.Status == "andamento").ToList();
+    var prontosEntrega = Store.Servicos.Count(Store.IsProntoParaFinalizar);
+    var entreguesMes = Store.Servicos.Count(s => s.Status == "encerrada");
+    var todasEtapasAtivas = ativos.SelectMany(s => s.Etapas).ToList();
+    var etapasAtrasadas = todasEtapasAtivas.Count(e => Store.GetSaudeEtapa(e).CssClass == "h-red");
+    var etapasAtencao = todasEtapasAtivas.Count(e => Store.GetSaudeEtapa(e).CssClass == "h-yellow");
+    var qtdAIniciar = todasEtapasAtivas.Count(e => e.Coluna == "A iniciar");
+    var qtdExecucao = todasEtapasAtivas.Count(e => e.Coluna is "Iniciada" or "Em andamento");
+    var qtdFinalizadas = todasEtapasAtivas.Count(e => e.Coluna == "Finalizada");
+    var qtdEntregues = todasEtapasAtivas.Count(e => e.Coluna == "Entregue");
+    var etapasCampo = todasEtapasAtivas
+        .Where(e => e.Coluna != "Entregue")
+        .OrderBy(e => Store.GetSaudeEtapa(e).CssClass == "h-red" ? 0 : Store.GetSaudeEtapa(e).CssClass == "h-yellow" ? 1 : 2)
+        .ThenBy(e => e.DtPrevista)
+        .ToList();
+
+    // Métricas Financeiras
+    var recebido = Store.Lancamentos.Where(l => !l.Pagar && l.Status == "pago").Sum(l => l.ValorCentavos);
+    var pagoTotal = Store.Lancamentos.Where(l => l.Pagar && l.Status == "pago").Sum(l => l.ValorCentavos);
+    var saldoLiquido = recebido - pagoTotal;
+    var aReceber = Store.Lancamentos.Where(l => !l.Pagar && l.Status is "pendente" or "vencido").ToList();
+    var aReceberVencido = aReceber.Where(l => l.Status == "vencido").ToList();
+    var aPagar = Store.Lancamentos.Where(l => l.Pagar && l.Status is "pendente" or "vencido").ToList();
+    var vencidasPagar = aPagar.Count(l => l.Status == "vencido");
+    var despesasObra = aPagar.Where(l => l.Natureza is "material" or "mao-de-obra").ToList();
+    var comissoes = Store.Lancamentos.Where(l => l.Pagar && l.Natureza == "comissao" && l.Status is "pendente" or "vencido").ToList();
+    var pendenciasFin = Store.Lancamentos
+        .Where(l => l.Status is "vencido" or "pendente")
+        .OrderBy(l => l.Status == "vencido" ? 0 : 1)
+        .ThenBy(l => l.Vencimento)
+        .ToList();
+
+    int totalSlides = role switch
     {
-        <div class="widget"><span class="w-label">Leads novos (site)</span><strong>9</strong><small class="up">3 orçamentos em aberto</small></div>
-    }
-    @if (HasPerm("clientes.view"))
-    {
-        <div class="widget"><span class="w-label">Clientes ativos</span><strong>47</strong><small class="up">+6 este mês</small></div>
-    }
-    @if (HasPerm("obras.view"))
-    {
-        <div class="widget"><span class="w-label">Obras em andamento</span><strong>12</strong><small>3 entregues no mês</small></div>
-        <div class="widget warn"><span class="w-label">Etapas atrasadas</span><strong>4</strong><small class="down">2 críticas</small></div>
-    }
-    @if (HasPerm("financeiro.view"))
-    {
-        <div class="widget"><span class="w-label">Faturamento do mês</span><strong>R$ 284k</strong><small class="up">+18% vs anterior</small></div>
-        <div class="widget"><span class="w-label">Comissões pendentes</span><strong>R$ 12,4k</strong><small>3 parceiros</small></div>
-        <div class="widget warn"><span class="w-label">A receber (30d)</span><strong>R$ 96k</strong><small>8 parcelas</small></div>
-        <div class="widget danger"><span class="w-label">A pagar (30d)</span><strong>R$ 61k</strong><small>5 parcelas · 1 vencida</small></div>
-    }
-    @if (HasPerm("obras.view"))
-    {
-        <div class="widget wide">
-            <div class="wide-head"><strong>12</strong><span class="w-label">Obras por fase</span></div>
-            <div class="fases">
-                @foreach (var f in Fases)
+        "Financeiro" => pendenciasFin.Count,
+        "Comercial" => negsAtivas.Count + contratosPendentes,
+        "Serviços" or "Equipe" => etapasCampo.Count,
+        _ => ativos.Count
+    };
+    if (CarouselIndex >= totalSlides && totalSlides > 0)
+        CarouselIndex = 0;
+}
+
+<section class="dash-split">
+    <!-- ==================== COLUNA ESQUERDA (2 BLOCOS DE 4 MINI-CARDS 2x2) ==================== -->
+    <div class="dash-left">
+        @if (role == "Financeiro")
+        {
+            <!-- BLOCO 1 DO FINANCEIRO: RECEBÍVEIS & CAIXA -->
+            <div class="dash-group">
+                <div class="group-header">
+                    <span>▼ Recebíveis &amp; Caixa</span>
+                    <span>Entradas de Clientes</span>
+                </div>
+                <div class="mini-grid">
+                    <div class="mini-card ok" @onclick='() => IrPara("financeiro")'>
+                        <span class="m-label">Recebido no período</span>
+                        <strong>@MockErpStore.FormatMoeda(recebido)</strong>
+                        <small class="up">Contratos: @MockErpStore.FormatMoeda(Store.Servicos.Where(s => s.Status != "cancelada").Sum(s => s.ValorContrato))</small>
+                    </div>
+                    <div class="mini-card warn" @onclick='() => IrPara("financeiro")'>
+                        <span class="m-label">A receber (em aberto)</span>
+                        <strong>@MockErpStore.FormatMoeda(aReceber.Sum(r => r.ValorCentavos))</strong>
+                        <small>@aReceber.Count parcela(s) de clientes</small>
+                    </div>
+                    <div class="mini-card @(aReceberVencido.Count > 0 ? "danger" : "ok")" @onclick='() => IrPara("financeiro")'>
+                        <span class="m-label">Em atraso (Receber)</span>
+                        <strong>@MockErpStore.FormatMoeda(aReceberVencido.Sum(r => r.ValorCentavos))</strong>
+                        <small class="@(aReceberVencido.Count > 0 ? "down" : "up")">@aReceberVencido.Count parcela(s) vencida(s)</small>
+                    </div>
+                    <div class="mini-card ok" @onclick='() => IrPara("financeiro")'>
+                        <span class="m-label">Saldo líquido caixa</span>
+                        <strong>@MockErpStore.FormatMoeda(saldoLiquido)</strong>
+                        <small class="up">Recebido − Pago liquidado</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BLOCO 2 DO FINANCEIRO: CONTAS A PAGAR, OBRAS & COMISSÕES -->
+            <div class="dash-group">
+                <div class="group-header">
+                    <span>▲ Contas a Pagar &amp; Obras</span>
+                    <span>Despesas, Reembolsos &amp; Comissões</span>
+                </div>
+                <div class="mini-grid">
+                    <div class="mini-card @(vencidasPagar > 0 ? "danger" : "warn")" @onclick='() => IrPara("financeiro")'>
+                        <span class="m-label">A pagar (em aberto)</span>
+                        <strong>@MockErpStore.FormatMoeda(aPagar.Sum(p => p.ValorCentavos))</strong>
+                        <small class="@(vencidasPagar > 0 ? "down" : "")">@aPagar.Count lançamento(s) · @vencidasPagar vencido(s)</small>
+                    </div>
+                    <div class="mini-card warn" @onclick='() => IrPara("financeiro")'>
+                        <span class="m-label">Despesas obra / Reemb.</span>
+                        <strong>@MockErpStore.FormatMoeda(despesasObra.Sum(d => d.ValorCentavos))</strong>
+                        <small>@despesasObra.Count comprovante(s) / material</small>
+                    </div>
+                    <div class="mini-card" @onclick='() => IrPara("financeiro")'>
+                        <span class="m-label">Comissões parceiros</span>
+                        <strong>@MockErpStore.FormatMoeda(comissoes.Sum(c => c.ValorCentavos))</strong>
+                        <small>@comissoes.Count repasse(s) pendente(s)</small>
+                    </div>
+                    <div class="mini-card ok" @onclick='() => IrPara("financeiro")'>
+                        <span class="m-label">Pago no período</span>
+                        <strong>@MockErpStore.FormatMoeda(pagoTotal)</strong>
+                        <small class="up">Fornecedores e equipe em dia</small>
+                    </div>
+                </div>
+            </div>
+        }
+        else if (role == "Comercial")
+        {
+            <!-- BLOCO 1 DO COMERCIAL: FUNIL & ORÇAMENTOS -->
+            <div class="dash-group">
+                <div class="group-header">
+                    <span>◫ Funil &amp; Orçamentos</span>
+                    <span>Prospecção e Propostas</span>
+                </div>
+                <div class="mini-grid">
+                    <div class="mini-card warn" @onclick='() => IrPara("funil")'>
+                        <span class="m-label">Leads novos (site)</span>
+                        <strong>@leadsNovos</strong>
+                        <small class="up">+@leadsAtivos lead(s) em prospecção</small>
+                    </div>
+                    <div class="mini-card" @onclick='() => IrPara("funil")'>
+                        <span class="m-label">Visitas / Medições</span>
+                        <strong>@todasVisitas.Count</strong>
+                        <small class="up">@visitasRealizadas realizada(s) · @visitasAgendadas agendada(s)</small>
+                    </div>
+                    <div class="mini-card warn" @onclick='() => IrPara("funil")'>
+                        <span class="m-label">Orçamentos em aberto</span>
+                        <strong>@MockErpStore.FormatMoeda(orcsEnviados.Sum(o => o.Valor))</strong>
+                        <small>@orcsEnviados.Count proposta(s) aguardando aceite</small>
+                    </div>
+                    <div class="mini-card ok" @onclick='() => IrPara("funil")'>
+                        <span class="m-label">Orçamentos aprovados</span>
+                        <strong>@MockErpStore.FormatMoeda(orcsAceitos.Sum(o => o.Valor))</strong>
+                        <small class="up">@orcsAceitos.Count venda(s) fechada(s)</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BLOCO 2 DO COMERCIAL: CONTRATOS & PÓS-VENDA -->
+            <div class="dash-group">
+                <div class="group-header">
+                    <span>✎ Contratos &amp; Pós-Venda</span>
+                    <span>Fechamento e Carteira</span>
+                </div>
+                <div class="mini-grid">
+                    <div class="mini-card ok" @onclick='() => IrPara("clientes")'>
+                        <span class="m-label">Clientes na carteira</span>
+                        <strong>@cliAtivos</strong>
+                        <small class="up">100% com Portal ativo</small>
+                    </div>
+                    <div class="mini-card @(contratosPendentes > 0 ? "warn" : "ok")" @onclick='() => IrPara("contratos")'>
+                        <span class="m-label">Contratos p/ assinar</span>
+                        <strong>@contratosPendentes</strong>
+                        <small>Aguardando assinatura</small>
+                    </div>
+                    <div class="mini-card ok" @onclick='() => IrPara("contratos")'>
+                        <span class="m-label">Contratos assinados</span>
+                        <strong>@contratosAssinados</strong>
+                        <small class="up">Convertidos em serviço</small>
+                    </div>
+                    <div class="mini-card" @onclick='() => IrPara("servicos")'>
+                        <span class="m-label">Obras em pós-venda</span>
+                        <strong>@ativos.Count</strong>
+                        <small class="up">@prontosEntrega pronta(s) p/ entrega final</small>
+                    </div>
+                </div>
+            </div>
+        }
+        else if (role is "Serviços" or "Equipe")
+        {
+            <!-- BLOCO 1 DE SERVIÇOS / EQUIPE: OBRAS & PRAZOS -->
+            <div class="dash-group">
+                <div class="group-header">
+                    <span>▤ Obras &amp; Prazos</span>
+                    <span>@(role == "Equipe" ? "Execução de Campo" : "Coordenação Técnica")</span>
+                </div>
+                <div class="mini-grid">
+                    <div class="mini-card ok" @onclick='() => IrPara("servicos")'>
+                        <span class="m-label">Serviços andamento</span>
+                        <strong>@ativos.Count</strong>
+                        <small class="up">@ativos.Count(s => s.ModoExecucao == "oficina") oficina · @ativos.Count(s => s.ModoExecucao != "oficina") no local</small>
+                    </div>
+                    <div class="mini-card ok" @onclick='() => IrPara("servicos")'>
+                        <span class="m-label">Prontos p/ entrega</span>
+                        <strong>@prontosEntrega</strong>
+                        <small class="up">100% concluído no Kanban</small>
+                    </div>
+                    <div class="mini-card @(etapasAtrasadas > 0 ? "danger" : "ok")" @onclick='() => IrPara("kanban")'>
+                        <span class="m-label">Etapas atrasadas 🔴</span>
+                        <strong>@etapasAtrasadas</strong>
+                        <small class="down">Exige ação imediata</small>
+                    </div>
+                    <div class="mini-card warn" @onclick='() => IrPara("kanban")'>
+                        <span class="m-label">Etapas em atenção 🟡</span>
+                        <strong>@etapasAtencao</strong>
+                        <small>Prazo ≥ @Store.KanbanAlertaPct% consumido</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BLOCO 2 DE SERVIÇOS / EQUIPE: QUADRO KANBAN -->
+            <div class="dash-group">
+                <div class="group-header">
+                    <span>▦ Quadro Kanban</span>
+                    <span>Distribuição de Tarefas</span>
+                </div>
+                <div class="mini-grid">
+                    <div class="mini-card" @onclick='() => IrPara("kanban")'>
+                        <span class="m-label">A iniciar (0%)</span>
+                        <strong>@qtdAIniciar</strong>
+                        <small>Na fila de execução</small>
+                    </div>
+                    <div class="mini-card warn" @onclick='() => IrPara("kanban")'>
+                        <span class="m-label">Em execução (10–50%)</span>
+                        <strong>@qtdExecucao</strong>
+                        <small>Oficina e instalação</small>
+                    </div>
+                    <div class="mini-card" @onclick='() => IrPara("kanban")'>
+                        <span class="m-label">Finalizadas (90%)</span>
+                        <strong>@qtdFinalizadas</strong>
+                        <small>Aguardando vistoria</small>
+                    </div>
+                    <div class="mini-card ok" @onclick='() => IrPara("kanban")'>
+                        <span class="m-label">Entregues (100%)</span>
+                        <strong>@qtdEntregues</strong>
+                        <small class="up">Etapas homologadas</small>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <!-- ADMIN: BLOCO 1 (COMERCIAL & OPERAÇÃO) + BLOCO 2 (FINANCEIRO) -->
+            <div class="dash-group">
+                <div class="group-header">
+                    <span>▣ Comercial &amp; Operação</span>
+                    <span>Visão Geral Admin</span>
+                </div>
+                <div class="mini-grid">
+                    <div class="mini-card ok" @onclick='() => IrPara("funil")'>
+                        <span class="m-label">Leads novos (site)</span>
+                        <strong>@leadsNovos</strong>
+                        <small class="up">@orcsEnviados.Count orçamento(s) em aberto</small>
+                    </div>
+                    <div class="mini-card" @onclick='() => IrPara("clientes")'>
+                        <span class="m-label">Clientes ativos</span>
+                        <strong>@cliAtivos</strong>
+                        <small class="up">+@leadsAtivos lead(s) em prospecção</small>
+                    </div>
+                    <div class="mini-card" @onclick='() => IrPara("servicos")'>
+                        <span class="m-label">Serviços andamento</span>
+                        <strong>@ativos.Count</strong>
+                        <small class="up">@prontosEntrega pronto(s) · @entreguesMes entregue(s)</small>
+                    </div>
+                    <div class="mini-card @(etapasAtrasadas > 0 ? "danger" : "warn")" @onclick='() => IrPara("kanban")'>
+                        <span class="m-label">Etapas alerta/atraso</span>
+                        <strong>@(etapasAtrasadas + etapasAtencao)</strong>
+                        <small class="down">@etapasAtrasadas atrasada(s) 🔴 · @etapasAtencao atenção 🟡</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dash-group">
+                <div class="group-header">
+                    <span>◈ Financeiro</span>
+                    <span>Fluxo &amp; Contas</span>
+                </div>
+                <div class="mini-grid">
+                    <div class="mini-card ok" @onclick='() => IrPara("financeiro")'>
+                        <span class="m-label">Recebido no período</span>
+                        <strong>@MockErpStore.FormatMoeda(recebido)</strong>
+                        <small class="up">Contratos: @MockErpStore.FormatMoeda(Store.Servicos.Where(s => s.Status != "cancelada").Sum(s => s.ValorContrato))</small>
+                    </div>
+                    <div class="mini-card" @onclick='() => IrPara("financeiro")'>
+                        <span class="m-label">Comissões pendentes</span>
+                        <strong>@MockErpStore.FormatMoeda(comissoes.Sum(c => c.ValorCentavos))</strong>
+                        <small>@comissoes.Count lançamento(s) parceiros</small>
+                    </div>
+                    <div class="mini-card warn" @onclick='() => IrPara("financeiro")'>
+                        <span class="m-label">A receber (aberto)</span>
+                        <strong>@MockErpStore.FormatMoeda(aReceber.Sum(r => r.ValorCentavos))</strong>
+                        <small>@aReceber.Count parcela(s) · @aReceberVencido.Count vencida(s)</small>
+                    </div>
+                    <div class="mini-card @(vencidasPagar > 0 ? "danger" : "")" @onclick='() => IrPara("financeiro")'>
+                        <span class="m-label">A pagar (aberto)</span>
+                        <strong>@MockErpStore.FormatMoeda(aPagar.Sum(p => p.ValorCentavos))</strong>
+                        <small class="@(vencidasPagar > 0 ? "down" : "")">@aPagar.Count parcela(s) · @vencidasPagar vencida(s)</small>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- ==================== COLUNA DIREITA (PERSONALIZADA POR PERFIL + CARROSSEL MOBILE) ==================== -->
+    <div class="dash-right">
+        @if (role == "Financeiro")
+        {
+            <div class="right-header">
+                <div class="right-title">
+                    <span class="count-badge">@pendenciasFin.Count</span>
+                    <div>
+                        <h2>Contas a Pagar e a Receber</h2>
+                        <small>Vencimentos próximos, parcelas de clientes, despesas de obra e reembolsos</small>
+                    </div>
+                </div>
+
+                @if (pendenciasFin.Count > 0)
                 {
-                    <div class="fase"><i style="--p:@f.Pct"></i><span>@f.Nome</span><b>@f.Qtd</b></div>
+                    <div class="carousel-ctrl">
+                        <button type="button" class="c-btn" @onclick="() => MudarSlide(pendenciasFin.Count, -1)">◀</button>
+                        <span class="c-count">@(CarouselIndex + 1)/@pendenciasFin.Count</span>
+                        <div class="c-dots">
+                            @for (int i = 0; i < pendenciasFin.Count; i++)
+                            {
+                                var idx = i;
+                                <span class="c-dot @(idx == CarouselIndex ? "active" : "")" @onclick="() => IrParaSlide(idx)"></span>
+                            }
+                        </div>
+                        <button type="button" class="c-btn" @onclick="() => MudarSlide(pendenciasFin.Count, 1)">▶</button>
+                    </div>
+                }
+
+                <span class="badge b-info hide-m">Gestão Financeira</span>
+            </div>
+
+            <div class="obras-list" id="obras-carousel">
+                @foreach (var l in pendenciasFin)
+                {
+                    var vencido = l.Status == "vencido";
+                    var rowClass = vencido ? "err" : l.Pagar ? "warn" : "";
+                    var dirLabel = l.Pagar ? "▲ A Pagar" : "▼ A Receber";
+                    var valorColor = vencido ? "var(--err)" : l.Pagar ? "var(--warn)" : "var(--ok)";
+                    var srv = Store.Servicos.FirstOrDefault(s => s.Id == l.ServicoId);
+                    var cli = srv is not null ? Store.GetCliente(srv.ClienteId) : Store.GetCliente(l.ClienteId);
+
+                    <div class="obra-row @rowClass" @onclick='() => IrPara("financeiro")'>
+                        <div class="obra-top">
+                            <div class="obra-main">
+                                <div class="obra-cli">
+                                    @dirLabel · @l.BeneficiarioOuCliente
+                                    <span class="badge @(vencido ? "b-err" : l.Pagar ? "b-warn" : "b-ok")">
+                                        @(vencido ? "🔴 Vencido" : l.Pagar ? "🟡 A Pagar" : "🟢 A Receber")
+                                    </span>
+                                </div>
+                                <span class="obra-tipo">@l.Descricao · Obra/Cliente: @(cli?.Nome ?? "Geral")</span>
+                            </div>
+                            <span class="obra-pct" style="color:@valorColor">
+                                @(l.Pagar ? "- " : "+ ")@MockErpStore.FormatMoeda(l.ValorCentavos)
+                            </span>
+                        </div>
+                        <div class="obra-bar">
+                            <i style="width:@(vencido ? 100 : 65)%;background:@valorColor"></i>
+                        </div>
+                        <div class="obra-foot">
+                            <span>Natureza: <strong>@l.Natureza.ToUpperInvariant()</strong></span>
+                            <span>Vencimento: <strong>@l.Vencimento.ToString("dd/MM/yyyy")</strong></span>
+                        </div>
+                    </div>
                 }
             </div>
-        </div>
-    }
+        }
+        else if (role == "Comercial")
+        {
+            <div class="right-header">
+                <div class="right-title">
+                    <span class="count-badge">@totalSlides</span>
+                    <div>
+                        <h2>Andamento de Leads, Orçamentos &amp; Contratos</h2>
+                        <small>Pipeline comercial ativo, propostas em negociação e pós-contrato</small>
+                    </div>
+                </div>
+
+                @if (totalSlides > 0)
+                {
+                    <div class="carousel-ctrl">
+                        <button type="button" class="c-btn" @onclick="() => MudarSlide(totalSlides, -1)">◀</button>
+                        <span class="c-count">@(CarouselIndex + 1)/@totalSlides</span>
+                        <div class="c-dots">
+                            @for (int i = 0; i < totalSlides; i++)
+                            {
+                                var idx = i;
+                                <span class="c-dot @(idx == CarouselIndex ? "active" : "")" @onclick="() => IrParaSlide(idx)"></span>
+                            }
+                        </div>
+                        <button type="button" class="c-btn" @onclick="() => MudarSlide(totalSlides, 1)">▶</button>
+                    </div>
+                }
+
+                <span class="badge b-info hide-m">Pipeline Comercial &amp; Pós-Venda</span>
+            </div>
+
+            <div class="obras-list" id="obras-carousel">
+                @foreach (var n in negsAtivas)
+                {
+                    var cli = Store.GetCliente(n.ClienteId);
+                    var tipo = Store.GetTipoServico(n.TipoServicoId);
+                    var ultOrc = n.Orcamentos.OrderByDescending(o => o.Versao).FirstOrDefault();
+                    var pctEstagio = n.Estagio switch
+                    {
+                        "Novo" => 20,
+                        "Contato" => 35,
+                        "Visita/Medição" => 55,
+                        "Orçamento" => 75,
+                        "Negociação" => 90,
+                        _ => 50
+                    };
+                    var paradoAlerta = n.ParadoDias >= Store.FunilDiasAlertaParado;
+
+                    <div class="obra-row @(paradoAlerta ? "err" : "warn")" @onclick='() => IrPara("funil")'>
+                        <div class="obra-top">
+                            <div class="obra-main">
+                                <div class="obra-cli">
+                                    @(cli?.Nome ?? "Lead")
+                                    <span class="badge @(paradoAlerta ? "b-err" : "b-info")">Estágio: @n.Estagio</span>
+                                </div>
+                                <span class="obra-tipo">
+                                    @(tipo?.Nome ?? "Serviço") · @(ultOrc is not null ? $"Orçamento v{ultOrc.Versao} ({ultOrc.Status})" : "Sem orçamento emitido")
+                                </span>
+                            </div>
+                            <span class="obra-pct">@MockErpStore.FormatMoeda(ultOrc?.Valor ?? n.ValorEstimado)</span>
+                        </div>
+                        <div class="obra-bar"><i style="width:@(pctEstagio)%"></i></div>
+                        <div class="obra-foot">
+                            <span>Origem: <strong>@n.Origem.ToUpperInvariant()</strong> · Criado em @n.CriadoEm</span>
+                            <span>@(paradoAlerta ? $"⚠️ Parado há {n.ParadoDias} dias" : "Em negociação ativa")</span>
+                        </div>
+                    </div>
+                }
+
+                @foreach (var ct in Store.ContratosEmitidos.Where(c => c.Status is "rascunho" or "enviado" or "aguardando"))
+                {
+                    var cli = Store.GetCliente(ct.ClienteId);
+                    <div class="obra-row ready" @onclick='() => IrPara("contratos")'>
+                        <div class="obra-top">
+                            <div class="obra-main">
+                                <div class="obra-cli">
+                                    Contrato #@ct.Id · @(cli?.Nome ?? "Cliente")
+                                    <span class="badge b-warn">✎ Status: @ct.Status.ToUpperInvariant()</span>
+                                </div>
+                                <span class="obra-tipo">Arquivo: @ct.PdfNome · Enviado em @ct.EnviadoEm</span>
+                            </div>
+                            <span class="obra-pct">Assinatura</span>
+                        </div>
+                        <div class="obra-bar"><i style="width:85%"></i></div>
+                        <div class="obra-foot">
+                            <span>Provedor: <strong>@Store.SignatureProviderAtivo</strong></span>
+                            <span>Clique p/ abrir Contratos</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else if (role is "Serviços" or "Equipe")
+        {
+            <!-- SERVIÇOS / EQUIPE: PAINEL DE TAREFAS E ETAPAS EM EXECUÇÃO NO KANBAN -->
+            <div class="right-header">
+                <div class="right-title">
+                    <span class="count-badge">@etapasCampo.Count</span>
+                    <div>
+                        <h2>Tarefas e Etapas em Execução (Kanban)</h2>
+                        <small>Toque na tarefa para abrir o Kanban da obra e movimentar o cartão</small>
+                    </div>
+                </div>
+
+                @if (etapasCampo.Count > 0)
+                {
+                    <div class="carousel-ctrl">
+                        <button type="button" class="c-btn" @onclick="() => MudarSlide(etapasCampo.Count, -1)" title="Anterior">◀</button>
+                        <span class="c-count">@(CarouselIndex + 1)/@etapasCampo.Count</span>
+                        <div class="c-dots">
+                            @for (int i = 0; i < etapasCampo.Count; i++)
+                            {
+                                var idx = i;
+                                <span class="c-dot @(idx == CarouselIndex ? "active" : "")" @onclick="() => IrParaSlide(idx)"></span>
+                            }
+                        </div>
+                        <button type="button" class="c-btn" @onclick="() => MudarSlide(etapasCampo.Count, 1)" title="Próximo">▶</button>
+                    </div>
+                }
+
+                <span class="badge b-info hide-m">@(role == "Equipe" ? "Execução de Tarefas (Equipe)" : "Coordenação & Execução")</span>
+            </div>
+
+            <div class="obras-list" id="obras-carousel">
+                @foreach (var et in etapasCampo)
+                {
+                    var srv = Store.Servicos.FirstOrDefault(s => s.Id == et.ServicoId);
+                    var tipo = srv is not null ? Store.GetTipoServico(srv.TipoServicoId) : null;
+                    var saude = Store.GetSaudeEtapa(et);
+                    var pctEtapa = MockErpStore.GetPctColuna(et.Coluna);
+                    var rowClass = saude.CssClass == "h-red" ? "err" : saude.CssClass == "h-yellow" ? "warn" : "";
+                    var badgeClass = saude.CssClass == "h-red" ? "b-err" : saude.CssClass == "h-yellow" ? "b-warn" : "b-info";
+
+                    <div class="obra-row @rowClass" @onclick="() => AbrirKanbanServico(et.ServicoId)">
+                        <div class="obra-top">
+                            <div class="obra-main">
+                                <div class="obra-cli">
+                                    @(et.ParentId is not null ? $"↳ {et.Nome}" : et.Nome)
+                                    <span class="badge @badgeClass">@et.Coluna (@pctEtapa%) · @saude.Label</span>
+                                </div>
+                                <span class="obra-tipo">
+                                    Obra #@et.ServicoId (@(tipo?.Nome ?? "Serviço")) · Local: @(string.IsNullOrWhiteSpace(srv?.EnderecoExecucao) ? "Oficina / Local" : srv!.EnderecoExecucao)
+                                </span>
+                            </div>
+                            <span class="obra-pct">@pctEtapa%</span>
+                        </div>
+                        <div class="obra-bar"><i style="width:@(Math.Max(pctEtapa, 8))%"></i></div>
+                        <div class="obra-foot">
+                            <span>Responsável: <strong>@(string.IsNullOrWhiteSpace(et.ResponsavelNome) ? "Equipe Hako" : et.ResponsavelNome)</strong></span>
+                            <span>Prazo etapa: <strong>@et.DtPrevista.ToString("dd/MM/yyyy")</strong></span>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <!-- ADMIN: PAINEL CONSOLIDADO DE SERVIÇOS EM ANDAMENTO -->
+            <div class="right-header">
+                <div class="right-title">
+                    <span class="count-badge">@ativos.Count</span>
+                    <div>
+                        <h2>Serviços em Andamento</h2>
+                        <small>Progresso sincronizado com Kanban e Cronograma (Gantt)</small>
+                    </div>
+                </div>
+
+                @if (ativos.Count > 0)
+                {
+                    <div class="carousel-ctrl">
+                        <button type="button" class="c-btn" @onclick="() => MudarSlide(ativos.Count, -1)" title="Anterior">◀</button>
+                        <span class="c-count">@(CarouselIndex + 1)/@ativos.Count</span>
+                        <div class="c-dots">
+                            @for (int i = 0; i < ativos.Count; i++)
+                            {
+                                var idx = i;
+                                <span class="c-dot @(idx == CarouselIndex ? "active" : "")" @onclick="() => IrParaSlide(idx)"></span>
+                            }
+                        </div>
+                        <button type="button" class="c-btn" @onclick="() => MudarSlide(ativos.Count, 1)" title="Próximo">▶</button>
+                    </div>
+                }
+
+                <span class="badge b-info hide-m">@(role == "Equipe" ? "Execução de Tarefas (Equipe)" : "Coordenação & Execução")</span>
+            </div>
+
+            <div class="obras-list" id="obras-carousel">
+                @for (int i = 0; i < ativos.Count; i++)
+                {
+                    var s = ativos[i];
+                    var cli = Store.GetCliente(s.ClienteId);
+                    var tipo = Store.GetTipoServico(s.TipoServicoId);
+                    var pct = Store.GetPctExibidoServico(s);
+                    var pronto = Store.IsProntoParaFinalizar(s);
+                    var temAtraso = s.Etapas.Any(e => Store.GetSaudeEtapa(e).CssClass == "h-red");
+                    var temAlerta = s.Etapas.Any(e => Store.GetSaudeEtapa(e).CssClass == "h-yellow");
+
+                    var rowClass = pronto ? "ready" : temAtraso ? "err" : temAlerta ? "warn" : "";
+                    var badgeClass = pronto ? "b-ok" : temAtraso ? "b-err" : temAlerta ? "b-warn" : "b-ok";
+                    var badgeText = pronto ? "★ 100% — Aguardando Entrega"
+                                  : temAtraso ? "🔴 Etapa em atraso"
+                                  : temAlerta ? "🟡 Em atenção"
+                                  : "🟢 No prazo";
+
+                    <div class="obra-row @rowClass" @onclick="() => AbrirKanbanServico(s.Id)">
+                        <div class="obra-top">
+                            <div class="obra-main">
+                                <div class="obra-cli">
+                                    @(cli?.Nome ?? "—")
+                                    <span class="badge @badgeClass">@badgeText</span>
+                                </div>
+                                <span class="obra-tipo">@(tipo?.Nome ?? "Serviço") · @(s.ModoExecucao == "oficina" ? "Oficina → Local" : "Execução no Local")</span>
+                            </div>
+                            <span class="obra-pct">@pct%</span>
+                        </div>
+                        <div class="obra-bar"><i style="width:@(pct)%"></i></div>
+                        <div class="obra-foot">
+                            <span>Fase atual: <strong>@Store.GetFaseAtualServico(s)</strong></span>
+                            <span>Entrega: <strong>@s.DtEntrega.ToString("dd/MM/yyyy")</strong></span>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
 </section>
 
 @code {
-    [Parameter, EditorRequired] public Func<string, bool> HasPerm { get; set; } = _ => false;
+    int CarouselIndex;
 
-    record Fase(string Nome, int Qtd, int Pct);
-    static readonly Fase[] Fases =
-    [
-        new("Projeto", 3, 60), new("Produção", 5, 45),
-        new("Montagem", 2, 80), new("Entrega", 2, 95),
-    ];
+    protected override void OnInitialized() => Store.OnChange += StateHasChanged;
+    public void Dispose() => Store.OnChange -= StateHasChanged;
+
+    async Task MudarSlide(int total, int delta)
+    {
+        if (total <= 0) return;
+        CarouselIndex = (CarouselIndex + delta + total) % total;
+        await ScrollCarouselAsync();
+    }
+
+    async Task IrParaSlide(int idx)
+    {
+        CarouselIndex = idx;
+        await ScrollCarouselAsync();
+    }
+
+    async Task ScrollCarouselAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("eval", $"var el=document.getElementById('obras-carousel');if(el){{var card=el.children[{CarouselIndex}];if(card)el.scrollTo({{left:card.offsetLeft,behavior:'smooth'}});}}");
+        }
+        catch
+        {
+            // Ignora desconexão de circuito
+        }
+    }
+
+    void IrPara(string sec)
+    {
+        Store.ActiveSection = sec;
+        Store.NotifyStateChanged();
+    }
+
+    void AbrirKanbanServico(int servicoId)
+    {
+        if (!Store.HasPerm("servicos.view"))
+            return;
+        Store.SelectedServicoKanbanId = servicoId;
+        Store.ActiveSection = "kanban";
+        Store.NotifyStateChanged();
+    }
 }

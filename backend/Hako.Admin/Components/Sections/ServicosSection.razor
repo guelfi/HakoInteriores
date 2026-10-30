@@ -1,0 +1,1407 @@
+@inject MockErpStore Store
+
+<style>
+  .modal.modal-lg { width: min(920px, 96vw); max-height: 90vh; overflow-y: auto; }
+  .tr-ready { background: rgba(46,158,91,.14) !important; font-weight: 600; }
+  .tr-ready:hover { background: rgba(46,158,91,.22) !important; }
+  .srv-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .srv-filters input, .srv-filters select {
+    background: var(--card); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 10px; font-size: 13px; font-family: inherit;
+  }
+  .ready-banner {
+    background: rgba(46,158,91,.14); border: 1px solid var(--ok); border-radius: 12px;
+    padding: 14px 16px; display: flex; justify-content: space-between; align-items: center;
+    gap: 12px; flex-wrap: wrap;
+  }
+  .pct-box {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .sub-row td:first-child { padding-left: 32px; }
+  .contract-preview {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px; font-family: ui-monospace, monospace; font-size: 12.5px;
+    white-space: pre-wrap; max-height: 260px; overflow-y: auto; color: var(--text);
+  }
+</style>
+
+<p class="hint">Gestão completa de Serviços/Obras · clique em uma linha para abrir o dossiê em 6 abas ou salte direto para o Kanban / Cronograma Gantt.</p>
+
+<div class="toolbar">
+  <div class="srv-filters">
+    @if (Store.HasPerm("servicos.edit"))
+    {
+      <button class="btn primary" @onclick="NovoServico">+ Novo serviço</button>
+    }
+    <input placeholder="🔎 Buscar por cliente ou tipo..." @bind="Busca" @bind:event="oninput" style="min-width:210px" />
+    <select @bind="FiltroStatus" @bind:after="ResetPage">
+      <option value="andamento">Status: Em andamento</option>
+      <option value="todos">Status: Todos</option>
+      <option value="suspenso">Status: Suspenso</option>
+      <option value="encerrada">Status: Encerrado</option>
+      <option value="cancelada">Status: Cancelado</option>
+    </select>
+    <select @bind="FiltroCategoria" @bind:after="ResetPage">
+      <option value="todas">Categoria: Todas</option>
+      <option value="mobiliario">Mobiliário / Marcenaria</option>
+      <option value="alvenaria">Alvenaria / Reforma</option>
+    </select>
+    <select @bind="FiltroSaude" @bind:after="ResetPage">
+      <option value="todas">Saúde: Todas</option>
+      <option value="s-ok">🟢 No prazo</option>
+      <option value="s-warn">🟡 Atenção</option>
+      <option value="s-err">🔴 Atrasado</option>
+    </select>
+    <select @bind="FiltroLocal" @bind:after="ResetPage">
+      <option value="todos">Local: Todos</option>
+      <option value="oficina">🏭 Oficina Hako</option>
+      <option value="no_local">🏠 No local da obra</option>
+    </select>
+  </div>
+  <div class="pager">
+    <button disabled="@(Page <= 1)" @onclick="() => Page = 1">⏮</button>
+    <button disabled="@(Page <= 1)" @onclick="() => Page--">◀</button>
+    <span>Página @Page de @TotalPages (@Filtrados.Count)</span>
+    <button disabled="@(Page >= TotalPages)" @onclick="() => Page++">▶</button>
+    <button disabled="@(Page >= TotalPages)" @onclick="() => Page = TotalPages">⏭</button>
+  </div>
+</div>
+
+<div class="grid-card">
+  <table class="grid">
+    <thead>
+      <tr>
+        <th style="width:44px">Saúde</th>
+        <th>Tipo de Serviço</th>
+        <th>Cliente</th>
+        <th>Fase atual</th>
+        <th>% Execução</th>
+        <th class="hide-m">Previsão</th>
+        <th class="num">Ações rápidas</th>
+      </tr>
+    </thead>
+    <tbody>
+      @if (Paginados.Count == 0)
+      {
+        <tr>
+          <td colspan="7" class="muted" style="text-align:center;padding:28px">Nenhum serviço encontrado para os filtros selecionados.</td>
+        </tr>
+      }
+      @foreach (var s in Paginados)
+      {
+        var cli = Store.GetCliente(s.ClienteId);
+        var tipo = Store.GetTipoServico(s.TipoServicoId);
+        var saude = Store.GetSaudeServico(s);
+        var pctCalc = Store.GetPctCalculadoServico(s);
+        var pctExib = Store.GetPctExibidoServico(s);
+        var pronto = Store.IsProntoParaFinalizar(s);
+
+        <tr class="@(pronto ? "tr-ready" : "")"
+            style="@(pronto ? "background:rgba(46,158,91,.14);font-weight:600" : "")"
+            @onclick="() => AbrirServico(s)">
+          <td title="@saude.Label">
+            <span class="dot @saude.DotClass" title="@saude.Label"></span>
+          </td>
+          <td>
+            <span class="obra-ico">@(tipo?.Categoria == "alvenaria" ? "🧱" : "🪚")</span>
+            <strong>@(tipo?.Nome ?? "Serviço")</strong>
+            <span class="badge @(tipo?.Categoria == "alvenaria" ? "b-warn" : "b-func")" style="margin-left:6px">
+              @(tipo?.Categoria == "alvenaria" ? "Alvenaria" : "Mobiliário")
+            </span>
+            <span class="badge b-muted" style="margin-left:4px">
+              @(s.ModoExecucao == "oficina" ? "Oficina" : "No local")
+            </span>
+          </td>
+          <td>
+            @(cli?.Nome ?? "—")
+            @if (s.Status != "andamento")
+            {
+              <span class="badge @(s.Status == "encerrada" ? "b-ok" : s.Status == "suspenso" ? "b-warn" : "b-err")" style="margin-left:6px">
+                @s.Status.ToUpperInvariant()
+              </span>
+            }
+          </td>
+          <td>
+            @Store.GetFaseAtualServico(s)
+            @if (pronto)
+            {
+              <div style="margin-top:4px">
+                <span class="badge b-ok" style="background:var(--ok);color:#fff">★ 100% — Confirmar Entrega</span>
+              </div>
+            }
+          </td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div class="pbar"><i style="--p:@pctExib"></i></div>
+              <span class="mono">@pctExib%</span>
+              @if (s.AjustePctDelta != 0)
+              {
+                <span class="badge b-warn" title="Calculado pelo Kanban: @pctCalc% | Ajuste manual: @(s.AjustePctDelta > 0 ? $"+{s.AjustePctDelta}" : s.AjustePctDelta.ToString())%">
+                  @(s.AjustePctDelta > 0 ? $"+{s.AjustePctDelta}%" : $"{s.AjustePctDelta}%")
+                </span>
+              }
+            </div>
+          </td>
+          <td class="mono hide-m">@s.DtEntrega.ToString("dd/MM/yyyy")</td>
+          <td class="num" @onclick:stopPropagation="true">
+            <div class="actions end">
+              <button class="btn" title="Abrir no Kanban de Serviços" @onclick="() => IrParaKanban(s)">▦ Kanban</button>
+              <button class="btn" title="Abrir no Cronograma Gantt" @onclick="() => IrParaGantt(s)">📅 Gantt</button>
+            </div>
+          </td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>
+
+@if (ModalAberto && EditServico is not null)
+{
+  var cliModal = Store.GetCliente(EditServico.ClienteId);
+  var tipoModal = Store.GetTipoServico(EditServico.TipoServicoId);
+  var prontoModal = Store.IsProntoParaFinalizar(EditServico);
+  var pctCalcModal = Store.GetPctCalculadoServico(EditServico);
+  var pctExibModal = Store.GetPctExibidoServico(EditServico);
+  var podeEditar = Store.HasPerm("servicos.edit");
+
+  <div class="modal-back" @onclick="FecharModal">
+    <div class="modal modal-lg" @onclick:stopPropagation="true">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div>
+          <h3>@(IsNew ? "Novo Serviço / Obra" : $"Serviço #{EditServico.Id} — {tipoModal?.Nome} ({cliModal?.Nome})")</h3>
+          <small class="muted">
+            Status: <strong>@EditServico.Status.ToUpperInvariant()</strong> ·
+            Fase: <strong>@Store.GetFaseAtualServico(EditServico)</strong> ·
+            Prazo contratado: <strong>@EditServico.PrazoDias dias</strong>
+          </small>
+        </div>
+        <div class="actions">
+          @if (!IsNew)
+          {
+            <button class="btn" @onclick="() => IrParaKanban(EditServico)">▦ Abrir Kanban</button>
+            <button class="btn" @onclick="() => IrParaGantt(EditServico)">📅 Abrir Gantt</button>
+          }
+          <button class="btn" @onclick="FecharModal">✕</button>
+        </div>
+      </div>
+
+      @if (!IsNew && prontoModal)
+      {
+        <div class="ready-banner">
+          <div>
+            <strong style="color:var(--ok)">★ Todas as tarefas estão em Entregue (100% no Kanban)!</strong>
+            <div style="font-size:12.5px;color:var(--muted)">
+              O serviço permanece ativo com destaque na lista até confirmação manual de entrega final ou criação de tarefa de vistoria.
+            </div>
+          </div>
+          @if (podeEditar)
+          {
+            <div class="actions">
+              <button class="btn" @onclick="CriarTarefaVistoria">+ Criar Tarefa de Vistoria/Entrega</button>
+              <button class="btn primary" @onclick="ConfirmarEntregaFinal">✓ Confirmar Finalização e Entrega do Serviço</button>
+            </div>
+          }
+        </div>
+      }
+
+      @if (!string.IsNullOrEmpty(ErroModal))
+      {
+        <div style="background:rgba(192,57,43,.12);border:1px solid var(--err);color:var(--err);padding:10px 12px;border-radius:8px;font-size:13px">
+          ⚠ @ErroModal
+        </div>
+      }
+      @if (!string.IsNullOrEmpty(AvisoSucesso))
+      {
+        <div style="background:rgba(46,158,91,.12);border:1px solid var(--ok);color:var(--ok);padding:10px 12px;border-radius:8px;font-size:13px">
+          ✓ @AvisoSucesso
+        </div>
+      }
+
+      <div class="tabs" style="margin-bottom:6px">
+        <button class="tab @(AbaAtiva == "dados" ? "on" : "")" @onclick='() => AbaAtiva = "dados"'>1. Dados</button>
+        <button class="tab @(AbaAtiva == "etapas" ? "on" : "")" @onclick='() => AbaAtiva = "etapas"'>2. Etapas (@EditServico.Etapas.Count)</button>
+        <button class="tab @(AbaAtiva == "equipe" ? "on" : "")" @onclick='() => AbaAtiva = "equipe"'>3. Equipe (@EditServico.Equipe.Count)</button>
+        <button class="tab @(AbaAtiva == "anexos" ? "on" : "")" @onclick='() => AbaAtiva = "anexos"'>4. Anexos (@EditServico.Anexos.Count(a => a.Ativo))</button>
+        @if (Store.HasPerm("contratos.view"))
+        {
+          <button class="tab @(AbaAtiva == "contrato" ? "on" : "")" @onclick='() => AbaAtiva = "contrato"'>5. Contrato</button>
+        }
+        @if (Store.HasPerm("financeiro.view"))
+        {
+          <button class="tab @(AbaAtiva == "financeiro" ? "on" : "")" @onclick='() => AbaAtiva = "financeiro"'>6. Financeiro</button>
+        }
+      </div>
+
+      @* ================= ABA 1: DADOS ================= *@
+      @if (AbaAtiva == "dados")
+      {
+        <div class="fld-row">
+          <label class="fld">
+            Cliente @(IsNew ? "" : "(somente leitura após criação)")
+            @if (IsNew)
+            {
+              <select @bind="EditServico.ClienteId" @bind:after="OnClienteNovoChanged">
+                @foreach (var c in Store.Clientes)
+                {
+                  <option value="@c.Id">@c.Nome (@(c.IsLead ? "Lead" : "Cliente"))</option>
+                }
+              </select>
+            }
+            else
+            {
+              <input value="@(cliModal?.Nome ?? "—")" readonly disabled />
+            }
+          </label>
+
+          <label class="fld">
+            Tipo de Serviço @(IsNew ? "" : "(somente leitura após criação)")
+            @if (IsNew)
+            {
+              <select @bind="EditServico.TipoServicoId" @bind:after="OnTipoNovoChanged">
+                @foreach (var t in Store.TiposServico.Where(x => x.Ativo))
+                {
+                  <option value="@t.Id">@t.Nome (@t.Categoria)</option>
+                }
+              </select>
+            }
+            else
+            {
+              <input value="@($"{tipoModal?.Nome} ({tipoModal?.Categoria})")" readonly disabled />
+            }
+          </label>
+        </div>
+
+        <div class="fld-row">
+          <label class="fld">
+            Status do Serviço
+            <select @bind="NovoStatusSelecionado" disabled="@(!podeEditar)">
+              <option value="andamento">Em andamento</option>
+              <option value="suspenso">Suspenso (pausa cronograma)</option>
+              <option value="encerrada">Encerrado / Entregue</option>
+              <option value="cancelada">Cancelado</option>
+            </select>
+          </label>
+          <label class="fld">
+            Valor do Contrato (R$)
+            <input type="number" step="100"
+                   value="@(EditServico.ValorContrato / 100)"
+                   @onchange="e => { if (long.TryParse(e.Value?.ToString(), out var v)) EditServico.ValorContrato = v * 100; }"
+                   disabled="@(!podeEditar)" />
+          </label>
+        </div>
+
+        @if (NovoStatusSelecionado != EditServico.Status && NovoStatusSelecionado is "suspenso" or "cancelada")
+        {
+          <label class="fld">
+            Justificativa obrigatória para alterar status para @NovoStatusSelecionado.ToUpperInvariant()
+            <input @bind="MotivoMudancaStatus" placeholder="Descreva o motivo da suspensão ou cancelamento..." />
+          </label>
+        }
+        else if (!string.IsNullOrWhiteSpace(EditServico.MotivoStatus))
+        {
+          <small class="muted">Último motivo de status registrado: <em>@EditServico.MotivoStatus</em></small>
+        }
+
+        <div class="fld-row">
+          <label class="fld">
+            Início Previsto
+            <input type="date"
+                   value="@EditServico.DtInicio.ToString("yyyy-MM-dd")"
+                   @onchange="e => { if (DateOnly.TryParse(e.Value?.ToString(), out var d)) { EditServico.DtInicio = d; RecalcularPrazo(); } }"
+                   disabled="@(!podeEditar)" />
+          </label>
+          <label class="fld">
+            Entrega Prevista (Prazo: @EditServico.PrazoDias dias)
+            <input type="date"
+                   value="@EditServico.DtEntrega.ToString("yyyy-MM-dd")"
+                   @onchange="e => { if (DateOnly.TryParse(e.Value?.ToString(), out var d)) { EditServico.DtEntrega = d; RecalcularPrazo(); } }"
+                   disabled="@(!podeEditar)" />
+          </label>
+        </div>
+
+        <div class="fld-row">
+          <label class="fld">
+            Início Efetivo (auto-preenchido ao iniciar 1ª etapa)
+            <input value="@(EditServico.DtInicioEfetivo?.ToString("dd/MM/yyyy") ?? "Não iniciado")" readonly disabled />
+          </label>
+          <label class="fld">
+            Entrega Efetiva
+            <input value="@(EditServico.DtEntregaEfetiva?.ToString("dd/MM/yyyy") ?? "Em aberto")" readonly disabled />
+          </label>
+        </div>
+
+        @* Local de execução *@
+        <div class="pct-box">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+            <strong>Local de Execução e Instalação (Snapshot Imutável)</strong>
+            <div style="display:flex;gap:8px">
+              <label class="fld chk">
+                <input type="radio" name="modo_exec" checked="@(EditServico.ModoExecucao == "no_local")"
+                       @onchange='() => SelecionarModoExecucao("no_local")' disabled="@(!podeEditar)" />
+                🏠 No local (Alvenaria/Reforma)
+              </label>
+              <label class="fld chk">
+                <input type="radio" name="modo_exec" checked="@(EditServico.ModoExecucao == "oficina")"
+                       @onchange='() => SelecionarModoExecucao("oficina")' disabled="@(!podeEditar)" />
+                🏭 Na oficina Hako (Marcenaria)
+              </label>
+            </div>
+          </div>
+
+          @if (EditServico.ModoExecucao == "no_local")
+          {
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <select value="@EditServico.EnderecoOrigem" @onchange="OnOrigemEnderecoNoLocalChanged" disabled="@(!podeEditar)"
+                      style="background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px">
+                <option value="cliente">Usar endereço do cadastro do cliente (Snapshot)</option>
+                <option value="informado">Informar outro endereço de obra</option>
+              </select>
+              @if (podeEditar)
+              {
+                <button class="btn" type="button" @onclick="AtualizarEnderecoAPartirDoCliente">↻ Atualizar a partir do cliente</button>
+              }
+            </div>
+            <label class="fld">
+              Endereço de Execução da Obra
+              <input @bind="EditServico.EnderecoExecucao" readonly="@(EditServico.EnderecoOrigem == "cliente" || !podeEditar)" />
+            </label>
+          }
+          else
+          {
+            <label class="fld">
+              Endereço de Produção (Oficina ConfigSistema)
+              <input value="@Store.OficinaEndereco" readonly disabled />
+            </label>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <select value="@EditServico.InstalacaoOrigem" @onchange="OnOrigemInstalacaoOficinaChanged" disabled="@(!podeEditar)"
+                      style="background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px">
+                <option value="cliente">Instalar no endereço do cliente (Snapshot)</option>
+                <option value="informado">Instalar em outro endereço informado</option>
+              </select>
+              @if (podeEditar)
+              {
+                <button class="btn" type="button" @onclick="AtualizarEnderecoAPartirDoCliente">↻ Atualizar a partir do cliente</button>
+              }
+            </div>
+            <label class="fld">
+              Endereço de Entrega / Instalação Final
+              <input @bind="EditServico.EnderecoInstalacao" readonly="@(EditServico.InstalacaoOrigem == "cliente" || !podeEditar)" />
+            </label>
+          }
+        </div>
+
+        @* Percentual de execução: Calculado vs Exibido *@
+        @if (!IsNew)
+        {
+          <div class="pct-box">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+              <div>
+                <strong>Percentual de Execução (Kanban vs Exibido no Portal)</strong>
+                <div style="font-size:12px;color:var(--muted)">
+                  Calculado pelo Kanban: <strong class="mono">@pctCalcModal%</strong> ·
+                  Delta manual atual: <strong class="mono">@(EditServico.AjustePctDelta >= 0 ? $"+{EditServico.AjustePctDelta}%" : $"{EditServico.AjustePctDelta}%")</strong> ·
+                  Exibido atual: <strong class="mono">@pctExibModal%</strong>
+                </div>
+              </div>
+              @if (podeEditar && EditServico.AjustePctDelta != 0)
+              {
+                <button class="btn" type="button" @onclick="ZerarAjustePct">Zerar ajuste (delta=0)</button>
+              }
+            </div>
+
+            @if (podeEditar)
+            {
+              <div class="fld-row" style="align-items:flex-end">
+                <label class="fld">
+                  Novo % Exibido (0 a 100)
+                  <input type="number" min="0" max="100" @bind="NovoPctExibidoInput" />
+                </label>
+                <label class="fld">
+                  Justificativa @(NovoPctExibidoInput < pctExibModal ? "(OBRIGATÓRIA para redução de %)" : "(opcional para avanço)")
+                  <input @bind="MotivoAjustePctInput" placeholder="Ex.: Retrabalho na pintura de laca..." />
+                </label>
+              </div>
+              <div>
+                <button class="btn" type="button" @onclick="AplicarAjustePct">Aplicar ajuste de %</button>
+              </div>
+            }
+
+            @if (EditServico.HistoricoAjustes.Count > 0)
+            {
+              <div style="font-size:12px">
+                <strong>Histórico de ajustes manuais de %:</strong>
+                <ul style="margin:4px 0 0 18px;padding:0">
+                  @foreach (var h in EditServico.HistoricoAjustes)
+                  {
+                    <li>
+                      <span class="mono">@h.Quando</span> — <strong>@h.Usuario</strong>:
+                      de <strong>@h.De%</strong> para <strong>@h.Para%</strong>
+                      (Kanban na hora: @h.CalculadoNaHora%, delta @(h.Delta >= 0 ? $"+{h.Delta}" : h.Delta.ToString())%) —
+                      <em>@h.Motivo</em>
+                    </li>
+                  }
+                </ul>
+              </div>
+            }
+          </div>
+        }
+
+        <div class="actions end">
+          <button class="btn" @onclick="FecharModal">Cancelar</button>
+          @if (podeEditar)
+          {
+            <button class="btn primary" @onclick="SalvarDadosServico">Salvar Dados do Serviço</button>
+          }
+        </div>
+      }
+
+      @* ================= ABA 2: ETAPAS (Árvore 2 níveis + Predecessora) ================= *@
+      @if (AbaAtiva == "etapas")
+      {
+        var topos = EditServico.Etapas.Where(x => x.ParentId == null).OrderBy(x => x.Ordem).ToList();
+        var somaTopos = topos.Sum(t => t.DuracaoDias);
+
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <small class="muted">
+            Soma das tarefas de topo: <strong>@somaTopos d</strong> / Prazo do serviço: <strong>@EditServico.PrazoDias d</strong>
+            (folga disponível: <strong>@(EditServico.PrazoDias - somaTopos) d</strong>)
+          </small>
+        </div>
+
+        <div class="grid-card">
+          <table class="grid">
+            <thead>
+              <tr>
+                <th># / Tarefa</th>
+                <th>Predecessora</th>
+                <th>Responsável</th>
+                <th>Início → Fim</th>
+                <th>Duração</th>
+                <th>Coluna Kanban</th>
+                <th>%</th>
+                @if (podeEditar)
+                {
+                  <th class="num">Ações</th>
+                }
+              </tr>
+            </thead>
+            <tbody>
+              @foreach (var t in topos)
+              {
+                var filhas = EditServico.Etapas.Where(x => x.ParentId == t.Id).OrderBy(x => x.Ordem).ToList();
+                var pred = t.PredecessoraId is int pid ? EditServico.Etapas.FirstOrDefault(x => x.Id == pid) : null;
+                var pctT = Store.GetPctEtapa(EditServico, t);
+
+                <tr>
+                  <td>
+                    <strong>@t.Ordem. @t.Nome</strong>
+                    @if (filhas.Count > 0)
+                    {
+                      <span class="badge b-info" style="margin-left:6px">📂 @filhas.Count sub-tarefas</span>
+                    }
+                  </td>
+                  <td>
+                    @if (pred is not null)
+                    {
+                      <span class="badge b-muted">🔗 #@pred.Ordem @pred.Nome</span>
+                    }
+                    else
+                    {
+                      <span class="muted">—</span>
+                    }
+                  </td>
+                  <td>@(string.IsNullOrWhiteSpace(t.ResponsavelNome) ? "—" : t.ResponsavelNome)</td>
+                  <td class="mono">@t.DtInicioPrevista.ToString("dd/MM") → @t.DtPrevista.ToString("dd/MM")</td>
+                  <td class="mono">@t.DuracaoDias d</td>
+                  <td><span class="badge b-muted">@t.Coluna</span></td>
+                  <td class="mono"><strong>@pctT%</strong></td>
+                  @if (podeEditar)
+                  {
+                    <td class="num">
+                      <button class="btn danger" style="padding:4px 8px;font-size:11.5px" @onclick="() => RemoverEtapa(t)">Remover</button>
+                    </td>
+                  }
+                </tr>
+
+                @foreach (var f in filhas)
+                {
+                  var pctF = MockErpStore.GetPctColuna(f.Coluna);
+                  <tr class="sub-row" style="background:var(--bg)">
+                    <td>
+                      <span class="muted">↳ @t.Ordem.@f.Ordem</span> @f.Nome
+                    </td>
+                    <td class="muted">Sub-tarefa de #@t.Ordem</td>
+                    <td>@(string.IsNullOrWhiteSpace(f.ResponsavelNome) ? "—" : f.ResponsavelNome)</td>
+                    <td class="mono">@f.DtInicioPrevista.ToString("dd/MM") → @f.DtPrevista.ToString("dd/MM")</td>
+                    <td class="mono">@f.DuracaoDias d</td>
+                    <td><span class="badge b-muted">@f.Coluna</span></td>
+                    <td class="mono">@pctF%</td>
+                    @if (podeEditar)
+                    {
+                      <td class="num">
+                        <button class="btn danger" style="padding:4px 8px;font-size:11.5px" @onclick="() => RemoverEtapa(f)">Remover</button>
+                      </td>
+                    }
+                  </tr>
+                }
+              }
+            </tbody>
+          </table>
+        </div>
+
+        @if (podeEditar)
+        {
+          <div class="pct-box">
+            <strong>Adicionar Tarefa ou Sub-tarefa ao Serviço</strong>
+            <div class="fld-row">
+              <label class="fld">
+                Nome da Tarefa / Sub-tarefa
+                <input @bind="NovaEtapaNome" placeholder="Ex.: Instalação de fitas LED e spots..." />
+              </label>
+              <label class="fld">
+                Nível Hierárquico (Pai)
+                <select @bind="NovaEtapaParentId">
+                  <option value="0">Tarefa Principal (Topo)</option>
+                  @foreach (var t in topos)
+                  {
+                    <option value="@t.Id">↳ Sub-tarefa de: #@t.Ordem @t.Nome (@t.DuracaoDias d)</option>
+                  }
+                </select>
+              </label>
+            </div>
+            <div class="fld-row">
+              <label class="fld">
+                Predecessora (opcional, apenas para tarefa topo)
+                <select @bind="NovaEtapaPredecessoraId" disabled="@(NovaEtapaParentId > 0)">
+                  <option value="0">Sem predecessora</option>
+                  @foreach (var t in topos)
+                  {
+                    <option value="@t.Id">🔗 Depende de: #@t.Ordem @t.Nome</option>
+                  }
+                </select>
+              </label>
+              <label class="fld">
+                Duração (dias) & Responsável
+                <div style="display:flex;gap:8px">
+                  <input type="number" min="1" max="60" @bind="NovaEtapaDuracao" style="width:90px" />
+                  <select @bind="NovaEtapaResponsavel" style="flex:1">
+                    <option value="João Marceneiro">João Marceneiro</option>
+                    <option value="Pedro Ajudante">Pedro Ajudante</option>
+                    <option value="Carlos Mestre de Obras">Carlos Mestre de Obras</option>
+                    <option value="Marcos Eletricista">Marcos Eletricista</option>
+                    <option value="Arq. Sofia Ribeiro">Arq. Sofia Ribeiro</option>
+                  </select>
+                </div>
+              </label>
+            </div>
+            <div class="actions end">
+              <button class="btn primary" @onclick="AdicionarEtapa">+ Adicionar Etapa</button>
+            </div>
+          </div>
+        }
+      }
+
+      @* ================= ABA 3: EQUIPE ================= *@
+      @if (AbaAtiva == "equipe")
+      {
+        <small class="muted">
+          Funcionários, colaboradores e parceiros alocados nesta obra. Para parceiros, exibe apenas o percentual de comissão (snapshot da época), sem expor valores em R$.
+        </small>
+
+        <div class="grid-card">
+          <table class="grid">
+            <thead>
+              <tr>
+                <th>Membro</th>
+                <th>Perfil</th>
+                <th>Papel no Serviço</th>
+                <th>Comissão (Snapshot %)</th>
+                @if (podeEditar)
+                {
+                  <th class="num">Ações</th>
+                }
+              </tr>
+            </thead>
+            <tbody>
+              @if (EditServico.Equipe.Count == 0)
+              {
+                <tr><td colspan="5" class="muted" style="text-align:center;padding:18px">Nenhum membro alocado.</td></tr>
+              }
+              @foreach (var eq in EditServico.Equipe)
+              {
+                var m = Store.GetMembroEquipe(eq.MembroId);
+                <tr>
+                  <td><strong>@(m?.Nome ?? $"Membro #{eq.MembroId}")</strong></td>
+                  <td><span class="badge @(m?.BadgeCls ?? "b-muted")">@(m?.Perfil ?? "—")</span></td>
+                  <td>@eq.Papel</td>
+                  <td>
+                    @if (m?.Perfil == "Parceiro" || eq.ComissaoPct > 0)
+                    {
+                      <span class="badge b-parc">Comissão: @eq.ComissaoPct% (snapshot)</span>
+                    }
+                    else
+                    {
+                      <span class="muted">—</span>
+                    }
+                  </td>
+                  @if (podeEditar)
+                  {
+                    <td class="num">
+                      <button class="btn danger" style="padding:4px 8px;font-size:11.5px" @onclick="() => RemoverMembroServico(eq)">Remover</button>
+                    </td>
+                  }
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        @if (podeEditar)
+        {
+          <div class="pct-box">
+            <strong>Alocar Membro Ativo na Equipe do Serviço</strong>
+            <div class="fld-row">
+              <label class="fld">
+                Profissional / Parceiro Ativo
+                <select @bind="NovoMembroId">
+                  @foreach (var m in Store.Equipe.Where(x => x.Ativo))
+                  {
+                    <option value="@m.Id">@m.Nome — @m.Perfil (@m.Funcao @(m.ComissaoPct > 0 ? $"· {m.ComissaoPct}%" : ""))</option>
+                  }
+                </select>
+              </label>
+              <label class="fld">
+                Papel desempenhado no serviço
+                <input @bind="NovoMembroPapel" placeholder="Ex.: Marceneiro Líder, Arquiteta Indicadora..." />
+              </label>
+            </div>
+            <div class="actions end">
+              <button class="btn primary" @onclick="AdicionarMembroServico">+ Alocar na Equipe</button>
+            </div>
+          </div>
+        }
+      }
+
+      @* ================= ABA 4: ANEXOS (Fotos Antes/Andamento/Depois + Docs) ================= *@
+      @if (AbaAtiva == "anexos")
+      {
+        <small class="muted">
+          Fotos marcadas como "Visível no Portal" aparecem automaticamente na galeria Antes / Em andamento / Depois do Portal do Cliente. Documentos técnicos permanecem restritos à equipe interna.
+        </small>
+
+        <div class="grid-card">
+          <table class="grid">
+            <thead>
+              <tr>
+                <th>Arquivo</th>
+                <th>Tipo</th>
+                <th>Momento / Fase</th>
+                <th>Etapa Vinculada</th>
+                <th>Portal do Cliente</th>
+                <th>Data</th>
+                @if (podeEditar)
+                {
+                  <th class="num">Ações</th>
+                }
+              </tr>
+            </thead>
+            <tbody>
+              @foreach (var a in EditServico.Anexos.Where(x => x.Ativo))
+              {
+                <tr>
+                  <td>
+                    <span>@(a.Tipo == "foto" ? "📷" : "📄")</span>
+                    <strong>@a.NomeArquivo</strong>
+                  </td>
+                  <td><span class="badge @(a.Tipo == "foto" ? "b-info" : "b-muted")">@a.Tipo</span></td>
+                  <td>
+                    @if (a.Tipo == "foto")
+                    {
+                      <span class="badge @(a.Momento == "depois" ? "b-ok" : a.Momento == "antes" ? "b-warn" : "b-info")">
+                        @a.Momento.ToUpperInvariant()
+                      </span>
+                    }
+                    else
+                    {
+                      <span class="muted">Técnico interno</span>
+                    }
+                  </td>
+                  <td>@(string.IsNullOrWhiteSpace(a.EtapaNome) ? "Geral" : a.EtapaNome)</td>
+                  <td>
+                    @if (a.Tipo == "foto")
+                    {
+                      <label class="fld chk" style="font-size:12px">
+                        <input type="checkbox" checked="@a.VisivelPortal"
+                               @onchange="e => { a.VisivelPortal = (bool)(e.Value ?? false); Store.NotifyStateChanged(); }"
+                               disabled="@(!podeEditar)" />
+                        @(a.VisivelPortal ? "Visível no Portal" : "Oculta")
+                      </label>
+                    }
+                    else
+                    {
+                      <span class="badge b-muted">🔒 Interno</span>
+                    }
+                  </td>
+                  <td class="mono">@a.DataUpload</td>
+                  @if (podeEditar)
+                  {
+                    <td class="num">
+                      <button class="btn danger" style="padding:4px 8px;font-size:11.5px" @onclick="() => { a.Ativo = false; Store.NotifyStateChanged(); }">Arquivar</button>
+                    </td>
+                  }
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        @if (podeEditar)
+        {
+          <div class="pct-box">
+            <strong>Adicionar Foto da Obra ou Documento Técnico</strong>
+            <div class="fld-row">
+              <label class="fld">
+                Nome do Arquivo
+                <input @bind="NovoAnexoNome" placeholder="Ex.: Bancada_Ilha_Instalada.jpg" />
+              </label>
+              <label class="fld">
+                Tipo & Momento
+                <div style="display:flex;gap:8px">
+                  <select @bind="NovoAnexoTipo">
+                    <option value="foto">📷 Foto de Obra</option>
+                    <option value="documento">📄 Documento Técnico</option>
+                  </select>
+                  @if (NovoAnexoTipo == "foto")
+                  {
+                    <select @bind="NovoAnexoMomento">
+                      <option value="antes">Antes</option>
+                      <option value="andamento">Em andamento</option>
+                      <option value="depois">Depois (Pronta)</option>
+                    </select>
+                  }
+                </div>
+              </label>
+            </div>
+            <div class="fld-row" style="align-items:center">
+              <label class="fld">
+                Etapa relacionada
+                <select @bind="NovoAnexoEtapa">
+                  <option value="Geral">Geral do Serviço</option>
+                  @foreach (var et in EditServico.Etapas)
+                  {
+                    <option value="@et.Nome">@et.Nome</option>
+                  }
+                </select>
+              </label>
+              @if (NovoAnexoTipo == "foto")
+              {
+                <label class="fld chk" style="margin-top:18px">
+                  <input type="checkbox" @bind="NovoAnexoVisivelPortal" />
+                  Publicar no Portal de Acompanhamento do Cliente
+                </label>
+              }
+            </div>
+            <div class="actions end">
+              <button class="btn primary" @onclick="AdicionarAnexo">+ Anexar Arquivo</button>
+            </div>
+          </div>
+        }
+      }
+
+      @* ================= ABA 5: CONTRATO (Requer contratos.view) ================= *@
+      @if (AbaAtiva == "contrato" && Store.HasPerm("contratos.view"))
+      {
+        var contratos = Store.ContratosEmitidos
+          .Where(c => c.ServicoId == EditServico.Id || c.ClienteId == EditServico.ClienteId)
+          .ToList();
+
+        @if (contratos.Count == 0)
+        {
+          <p class="muted">Nenhum contrato emitido vinculado a este serviço/cliente.</p>
+        }
+        else
+        {
+          <div class="grid-card">
+            <table class="grid">
+              <thead>
+                <tr>
+                  <th>Contrato</th>
+                  <th>Status</th>
+                  <th>Enviado / Assinado</th>
+                  <th>Hash SHA-256</th>
+                  <th class="num">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                @foreach (var c in contratos)
+                {
+                  <tr>
+                    <td><strong>#@c.Id — @c.PdfNome</strong></td>
+                    <td>
+                      <span class="badge @(c.Status == "assinado" ? "b-ok" : "b-warn")">@c.Status.ToUpperInvariant()</span>
+                    </td>
+                    <td class="mono">@c.EnviadoEm → @c.AssinadoEm</td>
+                    <td class="mono" style="font-size:11.5px">@c.HashDoc</td>
+                    <td class="num">
+                      <button class="btn" @onclick="() => ContratoPreview = ContratoPreview?.Id == c.Id ? null : c">
+                        @(ContratoPreview?.Id == c.Id ? "Ocultar Texto" : "👁 Visualizar Texto")
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+
+          @if (ContratoPreview is not null)
+          {
+            <div class="contract-preview">@ContratoPreview.TextoRenderizado</div>
+          }
+        }
+      }
+
+      @* ================= ABA 6: FINANCEIRO (Requer financeiro.view) ================= *@
+      @if (AbaAtiva == "financeiro" && Store.HasPerm("financeiro.view"))
+      {
+        var lancs = Store.Lancamentos.Where(l => l.ServicoId == EditServico.Id).OrderBy(l => l.Vencimento).ToList();
+        var totalReceitas = lancs.Where(l => !l.Pagar && l.Status != "cancelado").Sum(l => l.ValorCentavos);
+        var totalCustos = lancs.Where(l => l.Pagar && l.Status != "cancelado").Sum(l => l.ValorCentavos);
+        var orcamentoBase = EditServico.ValorContrato > 0 ? EditServico.ValorContrato : totalReceitas;
+        var margemCentavos = orcamentoBase - totalCustos;
+        var margemPct = orcamentoBase > 0 ? Math.Round(margemCentavos * 100.0 / orcamentoBase, 1) : 0;
+
+        <div class="fld-row" style="grid-template-columns:repeat(3,1fr)">
+          <div class="pct-box">
+            <span class="w-label">Orçamento Contratado</span>
+            <strong style="font-size:18px">@MockErpStore.FormatMoeda(orcamentoBase)</strong>
+          </div>
+          <div class="pct-box">
+            <span class="w-label">Custos Alocados (Materiais/M.O./Comissão)</span>
+            <strong style="font-size:18px;color:var(--err)">@MockErpStore.FormatMoeda(totalCustos)</strong>
+          </div>
+          <div class="pct-box">
+            <span class="w-label">Margem Prevista do Serviço</span>
+            <strong style="font-size:18px;color:var(--ok)">@MockErpStore.FormatMoeda(margemCentavos) (@margemPct%)</strong>
+          </div>
+        </div>
+
+        <div class="grid-card">
+          <table class="grid">
+            <thead>
+              <tr>
+                <th>Dir.</th>
+                <th>Natureza</th>
+                <th>Descrição</th>
+                <th>Cliente / Beneficiário</th>
+                <th>Vencimento</th>
+                <th>Status</th>
+                <th class="num">Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              @if (lancs.Count == 0)
+              {
+                <tr><td colspan="7" class="muted" style="text-align:center;padding:18px">Nenhum lançamento financeiro vinculado a este serviço.</td></tr>
+              }
+              @foreach (var l in lancs)
+              {
+                <tr>
+                  <td>
+                    <span class="dir @(l.Pagar ? "out" : "in")">@(l.Pagar ? "▲ Pagar" : "▼ Receber")</span>
+                  </td>
+                  <td><span class="badge b-muted">@l.Natureza</span></td>
+                  <td>@l.Descricao</td>
+                  <td>@l.BeneficiarioOuCliente</td>
+                  <td class="mono">@l.Vencimento.ToString("dd/MM/yyyy")</td>
+                  <td>
+                    <span class="badge @(l.Status == "pago" ? "b-ok" : l.Status == "vencido" ? "b-err" : "b-warn")">
+                      @l.Status.ToUpperInvariant()
+                    </span>
+                  </td>
+                  <td class="num mono"><strong>@MockErpStore.FormatMoeda(l.ValorCentavos)</strong></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </div>
+  </div>
+}
+
+@code {
+  private string Busca { get; set; } = "";
+  private string FiltroStatus { get; set; } = "andamento";
+  private string FiltroCategoria { get; set; } = "todas";
+  private string FiltroSaude { get; set; } = "todas";
+  private string FiltroLocal { get; set; } = "todos";
+  private int Page { get; set; } = 1;
+  private const int PageSize = 8;
+
+  private bool ModalAberto { get; set; }
+  private bool IsNew { get; set; }
+  private ServicoItem? EditServico { get; set; }
+  private string AbaAtiva { get; set; } = "dados";
+  private string ErroModal { get; set; } = "";
+  private string AvisoSucesso { get; set; } = "";
+
+  // Campos auxiliares Aba 1 (Dados)
+  private string NovoStatusSelecionado { get; set; } = "andamento";
+  private string MotivoMudancaStatus { get; set; } = "";
+  private int NovoPctExibidoInput { get; set; }
+  private string MotivoAjustePctInput { get; set; } = "";
+
+  // Campos auxiliares Aba 2 (Etapas)
+  private string NovaEtapaNome { get; set; } = "";
+  private int NovaEtapaParentId { get; set; }
+  private int NovaEtapaPredecessoraId { get; set; }
+  private int NovaEtapaDuracao { get; set; } = 4;
+  private string NovaEtapaResponsavel { get; set; } = "João Marceneiro";
+
+  // Campos auxiliares Aba 3 (Equipe)
+  private int NovoMembroId { get; set; } = 1;
+  private string NovoMembroPapel { get; set; } = "Profissional Alocado";
+
+  // Campos auxiliares Aba 4 (Anexos)
+  private string NovoAnexoNome { get; set; } = "";
+  private string NovoAnexoTipo { get; set; } = "foto";
+  private string NovoAnexoMomento { get; set; } = "andamento";
+  private string NovoAnexoEtapa { get; set; } = "Geral";
+  private bool NovoAnexoVisivelPortal { get; set; } = true;
+
+  // Campos auxiliares Aba 5 (Contrato)
+  private ContratoEmitidoItem? ContratoPreview { get; set; }
+
+  private List<ServicoItem> Filtrados => Store.Servicos
+    .Where(s =>
+    {
+      if (FiltroStatus != "todos" && s.Status != FiltroStatus) return false;
+      var tipo = Store.GetTipoServico(s.TipoServicoId);
+      if (FiltroCategoria != "todas" && tipo?.Categoria != FiltroCategoria) return false;
+      var saude = Store.GetSaudeServico(s);
+      if (FiltroSaude != "todas" && saude.DotClass != FiltroSaude) return false;
+      if (FiltroLocal != "todos" && s.ModoExecucao != FiltroLocal) return false;
+
+      if (!string.IsNullOrWhiteSpace(Busca))
+      {
+        var cli = Store.GetCliente(s.ClienteId);
+        var q = Busca.Trim();
+        bool matchCli = cli?.Nome.Contains(q, StringComparison.OrdinalIgnoreCase) == true;
+        bool matchTipo = tipo?.Nome.Contains(q, StringComparison.OrdinalIgnoreCase) == true;
+        if (!matchCli && !matchTipo) return false;
+      }
+      return true;
+    })
+    .OrderByDescending(Store.IsProntoParaFinalizar)
+    .ThenBy(s => s.DtEntrega)
+    .ToList();
+
+  private int TotalPages => Math.Max(1, (int)Math.Ceiling(Filtrados.Count / (double)PageSize));
+  private List<ServicoItem> Paginados => Filtrados.Skip((Page - 1) * PageSize).Take(PageSize).ToList();
+
+  private void ResetPage() => Page = 1;
+
+  private void IrParaKanban(ServicoItem s)
+  {
+    Store.SelectedServicoKanbanId = s.Id;
+    Store.ActiveSection = "kanban";
+    Store.NotifyStateChanged();
+  }
+
+  private void IrParaGantt(ServicoItem s)
+  {
+    Store.SelectedServicoKanbanId = s.Id;
+    Store.SelectedServicoCronogramaId = s.Id;
+    Store.ActiveSection = "cronograma";
+    Store.NotifyStateChanged();
+  }
+
+  private void AbrirServico(ServicoItem s)
+  {
+    IsNew = false;
+    EditServico = s;
+    AbaAtiva = "dados";
+    ErroModal = "";
+    AvisoSucesso = "";
+    NovoStatusSelecionado = s.Status;
+    MotivoMudancaStatus = "";
+    NovoPctExibidoInput = Store.GetPctExibidoServico(s);
+    MotivoAjustePctInput = "";
+    ContratoPreview = null;
+    ModalAberto = true;
+  }
+
+  private void NovoServico()
+  {
+    var priCli = Store.Clientes.FirstOrDefault();
+    var priTipo = Store.TiposServico.FirstOrDefault(t => t.Ativo);
+    IsNew = true;
+    EditServico = new ServicoItem
+    {
+      Id = Store.Servicos.Count > 0 ? Store.Servicos.Max(x => x.Id) + 1 : 1,
+      ClienteId = priCli?.Id ?? 1,
+      TipoServicoId = priTipo?.Id ?? 1,
+      Status = "andamento",
+      ModoExecucao = priTipo?.Categoria == "alvenaria" ? "no_local" : "oficina",
+      EnderecoOrigem = "cliente",
+      EnderecoExecucao = priCli?.EnderecoCompleto ?? "",
+      InstalacaoOrigem = "cliente",
+      EnderecoInstalacao = priCli?.EnderecoCompleto ?? "",
+      DtInicio = new DateOnly(2026, 10, 30),
+      DtEntrega = new DateOnly(2026, 11, 29),
+      PrazoDias = 30,
+      ValorContrato = 30000_00
+    };
+    PopularEtapasDoTemplate(EditServico);
+    AbaAtiva = "dados";
+    ErroModal = "";
+    AvisoSucesso = "";
+    NovoStatusSelecionado = "andamento";
+    ModalAberto = true;
+  }
+
+  private void OnClienteNovoChanged()
+  {
+    if (EditServico is null) return;
+    AtualizarEnderecoAPartirDoCliente();
+  }
+
+  private void OnTipoNovoChanged()
+  {
+    if (EditServico is null) return;
+    var tipo = Store.GetTipoServico(EditServico.TipoServicoId);
+    if (tipo is not null)
+    {
+      EditServico.ModoExecucao = tipo.Categoria == "alvenaria" ? "no_local" : "oficina";
+      PopularEtapasDoTemplate(EditServico);
+    }
+  }
+
+  private void PopularEtapasDoTemplate(ServicoItem s)
+  {
+    var tipo = Store.GetTipoServico(s.TipoServicoId);
+    if (tipo is null) return;
+    s.Etapas.Clear();
+    int baseId = (s.Id * 100) + 1;
+    var idMap = new Dictionary<int, int>();
+    foreach (var tp in tipo.EtapasPadrao)
+      idMap[tp.Id] = baseId++;
+
+    var cursor = s.DtInicio;
+    foreach (var tp in tipo.EtapasPadrao)
+    {
+      var ini = cursor;
+      var fim = ini.AddDays(Math.Max(1, tp.DuracaoDias));
+      if (tp.ParentId == null)
+        cursor = fim;
+
+      s.Etapas.Add(new ServicoEtapaItem
+      {
+        Id = idMap[tp.Id],
+        ServicoId = s.Id,
+        ParentId = tp.ParentId is int pid && idMap.TryGetValue(pid, out var mappedPid) ? mappedPid : null,
+        PredecessoraId = tp.PredecessoraId is int prid && idMap.TryGetValue(prid, out var mappedPrid) ? mappedPrid : null,
+        Nome = tp.Nome,
+        Ordem = tp.Ordem,
+        Coluna = "A iniciar",
+        DtInicioPrevista = ini,
+        DtPrevista = fim,
+        DuracaoDias = tp.DuracaoDias,
+        ResponsavelNome = "João Marceneiro"
+      });
+    }
+  }
+
+  private void RecalcularPrazo()
+  {
+    if (EditServico is null) return;
+    EditServico.PrazoDias = Math.Max(1, EditServico.DtEntrega.DayNumber - EditServico.DtInicio.DayNumber);
+  }
+
+  private void SelecionarModoExecucao(string modo)
+  {
+    if (EditServico is null) return;
+    EditServico.ModoExecucao = modo;
+    AtualizarEnderecoAPartirDoCliente();
+  }
+
+  private void OnOrigemEnderecoNoLocalChanged(ChangeEventArgs e)
+  {
+    if (EditServico is null) return;
+    EditServico.EnderecoOrigem = e.Value?.ToString() ?? "cliente";
+    if (EditServico.EnderecoOrigem == "cliente")
+      AtualizarEnderecoAPartirDoCliente();
+  }
+
+  private void OnOrigemInstalacaoOficinaChanged(ChangeEventArgs e)
+  {
+    if (EditServico is null) return;
+    EditServico.InstalacaoOrigem = e.Value?.ToString() ?? "cliente";
+    if (EditServico.InstalacaoOrigem == "cliente")
+      AtualizarEnderecoAPartirDoCliente();
+  }
+
+  private void AtualizarEnderecoAPartirDoCliente()
+  {
+    if (EditServico is null) return;
+    var cli = Store.GetCliente(EditServico.ClienteId);
+    var end = cli?.EnderecoCompleto ?? "";
+    if (EditServico.ModoExecucao == "no_local")
+      EditServico.EnderecoExecucao = end;
+    else
+      EditServico.EnderecoInstalacao = end;
+    AvisoSucesso = "Snapshot de endereço atualizado a partir do cadastro atual do cliente.";
+  }
+
+  private void AplicarAjustePct()
+  {
+    if (EditServico is null) return;
+    ErroModal = "";
+    AvisoSucesso = "";
+    var exibAtual = Store.GetPctExibidoServico(EditServico);
+    var calcAtual = Store.GetPctCalculadoServico(EditServico);
+    var novo = Math.Clamp(NovoPctExibidoInput, 0, 100);
+
+    if (novo < exibAtual && string.IsNullOrWhiteSpace(MotivoAjustePctInput))
+    {
+      ErroModal = "Para reduzir o percentual exibido, a justificativa é obrigatória.";
+      return;
+    }
+
+    var delta = novo - calcAtual;
+    EditServico.AjustePctDelta = delta;
+    EditServico.HistoricoAjustes.Insert(0, new AjustePctItem(
+      "30/10/2026 14:20",
+      Store.CurrentRole,
+      exibAtual,
+      novo,
+      calcAtual,
+      delta,
+      string.IsNullOrWhiteSpace(MotivoAjustePctInput) ? "Ajuste manual de avanço" : MotivoAjustePctInput.Trim()
+    ));
+    MotivoAjustePctInput = "";
+    AvisoSucesso = $"Percentual exibido ajustado para {novo}% (Delta: {(delta >= 0 ? $"+{delta}" : delta.ToString())}%).";
+    Store.NotifyStateChanged();
+  }
+
+  private void ZerarAjustePct()
+  {
+    if (EditServico is null) return;
+    EditServico.AjustePctDelta = 0;
+    NovoPctExibidoInput = Store.GetPctCalculadoServico(EditServico);
+    AvisoSucesso = "Ajuste manual zerado (Exibido = Calculado pelo Kanban).";
+    Store.NotifyStateChanged();
+  }
+
+  private void CriarTarefaVistoria()
+  {
+    if (EditServico is null) return;
+    var topos = EditServico.Etapas.Where(x => x.ParentId == null).OrderBy(x => x.Ordem).ToList();
+    var ultima = topos.LastOrDefault();
+    var novoId = EditServico.Etapas.Count > 0 ? EditServico.Etapas.Max(x => x.Id) + 1 : 900;
+    EditServico.Etapas.Add(new ServicoEtapaItem
+    {
+      Id = novoId,
+      ServicoId = EditServico.Id,
+      PredecessoraId = ultima?.Id,
+      Nome = "Vistoria final e entrega de chaves/termo",
+      Ordem = (ultima?.Ordem ?? 0) + 1,
+      Coluna = "A iniciar",
+      DtInicioPrevista = new DateOnly(2026, 10, 30),
+      DtPrevista = new DateOnly(2026, 10, 31),
+      DuracaoDias = 1,
+      ResponsavelNome = "João Marceneiro"
+    });
+    AvisoSucesso = "Tarefa de Vistoria/Entrega criada em 'A iniciar'. O destaque de 100% foi limpo até a conclusão da vistoria.";
+    Store.NotifyStateChanged();
+  }
+
+  private void ConfirmarEntregaFinal()
+  {
+    if (EditServico is null) return;
+    EditServico.Status = "encerrada";
+    NovoStatusSelecionado = "encerrada";
+    EditServico.DtEntregaEfetiva = new DateOnly(2026, 10, 30);
+    AvisoSucesso = "Serviço confirmado como ENCERRADO / ENTREGUE com sucesso!";
+    Store.NotifyStateChanged();
+  }
+
+  private void SalvarDadosServico()
+  {
+    if (EditServico is null) return;
+    ErroModal = "";
+
+    if (NovoStatusSelecionado != EditServico.Status && NovoStatusSelecionado is "suspenso" or "cancelada")
+    {
+      if (string.IsNullOrWhiteSpace(MotivoMudancaStatus))
+      {
+        ErroModal = $"Informe a justificativa obrigatória para mudar o status para {NovoStatusSelecionado.ToUpperInvariant()}.";
+        return;
+      }
+      EditServico.MotivoStatus = MotivoMudancaStatus.Trim();
+    }
+
+    EditServico.Status = NovoStatusSelecionado;
+    if (EditServico.Status == "encerrada" && EditServico.DtEntregaEfetiva is null)
+      EditServico.DtEntregaEfetiva = new DateOnly(2026, 10, 30);
+
+    if (IsNew)
+    {
+      var cli = Store.GetCliente(EditServico.ClienteId);
+      if (cli is not null) cli.IsLead = false; // Promove Lead a Cliente
+      Store.Servicos.Insert(0, EditServico);
+      IsNew = false;
+    }
+
+    AvisoSucesso = "Dados do serviço salvos com sucesso.";
+    Store.NotifyStateChanged();
+  }
+
+  private void AdicionarEtapa()
+  {
+    if (EditServico is null) return;
+    ErroModal = "";
+    AvisoSucesso = "";
+
+    if (string.IsNullOrWhiteSpace(NovaEtapaNome))
+    {
+      ErroModal = "Informe o nome da tarefa.";
+      return;
+    }
+
+    int dur = Math.Max(1, NovaEtapaDuracao);
+    if (NovaEtapaParentId == 0)
+    {
+      var topos = EditServico.Etapas.Where(x => x.ParentId == null).ToList();
+      var somaAtual = topos.Sum(x => x.DuracaoDias);
+      if (somaAtual + dur > EditServico.PrazoDias)
+      {
+        ErroModal = $"A soma das durações das tarefas de topo ({somaAtual + dur}d) ultrapassa o prazo do serviço ({EditServico.PrazoDias}d). Ajuste a duração ou a data de entrega.";
+        return;
+      }
+      var novoId = EditServico.Etapas.Count > 0 ? EditServico.Etapas.Max(x => x.Id) + 1 : 500;
+      var ini = topos.Count > 0 ? topos.Max(x => x.DtPrevista) : EditServico.DtInicio;
+      var fim = ini.AddDays(dur);
+      if (fim > EditServico.DtEntrega) fim = EditServico.DtEntrega;
+
+      EditServico.Etapas.Add(new ServicoEtapaItem
+      {
+        Id = novoId,
+        ServicoId = EditServico.Id,
+        ParentId = null,
+        PredecessoraId = NovaEtapaPredecessoraId > 0 ? NovaEtapaPredecessoraId : null,
+        Nome = NovaEtapaNome.Trim(),
+        Ordem = topos.Count + 1,
+        Coluna = "A iniciar",
+        DtInicioPrevista = ini,
+        DtPrevista = fim,
+        DuracaoDias = dur,
+        ResponsavelNome = NovaEtapaResponsavel
+      });
+    }
+    else
+    {
+      var pai = EditServico.Etapas.FirstOrDefault(x => x.Id == NovaEtapaParentId);
+      if (pai is null) return;
+      var filhas = EditServico.Etapas.Where(x => x.ParentId == pai.Id).ToList();
+      var somaFilhas = filhas.Sum(x => x.DuracaoDias);
+      if (somaFilhas + dur > pai.DuracaoDias)
+      {
+        ErroModal = $"A soma das sub-tarefas ({somaFilhas + dur}d) não pode ultrapassar a duração da tarefa pai \"{pai.Nome}\" ({pai.DuracaoDias}d).";
+        return;
+      }
+      var novoId = EditServico.Etapas.Max(x => x.Id) + 1;
+      var ini = filhas.Count > 0 ? filhas.Max(x => x.DtPrevista) : pai.DtInicioPrevista;
+      var fim = ini.AddDays(dur);
+      if (fim > pai.DtPrevista) fim = pai.DtPrevista;
+
+      EditServico.Etapas.Add(new ServicoEtapaItem
+      {
+        Id = novoId,
+        ServicoId = EditServico.Id,
+        ParentId = pai.Id,
+        Nome = NovaEtapaNome.Trim(),
+        Ordem = filhas.Count + 1,
+        Coluna = pai.Coluna == "Iniciada" ? "Iniciada" : "A iniciar",
+        DtInicioPrevista = ini,
+        DtPrevista = fim,
+        DuracaoDias = dur,
+        ResponsavelNome = NovaEtapaResponsavel
+      });
+    }
+
+    NovaEtapaNome = "";
+    AvisoSucesso = "Etapa adicionada com sucesso.";
+    Store.NotifyStateChanged();
+  }
+
+  private void RemoverEtapa(ServicoEtapaItem et)
+  {
+    if (EditServico is null) return;
+    EditServico.Etapas.RemoveAll(x => x.Id == et.Id || x.ParentId == et.Id);
+    foreach (var dep in EditServico.Etapas.Where(x => x.PredecessoraId == et.Id))
+      dep.PredecessoraId = null;
+    Store.NotifyStateChanged();
+  }
+
+  private void AdicionarMembroServico()
+  {
+    if (EditServico is null) return;
+    var m = Store.GetMembroEquipe(NovoMembroId);
+    if (m is null) return;
+    if (EditServico.Equipe.Any(x => x.MembroId == m.Id))
+    {
+      ErroModal = "Este profissional já está alocado neste serviço.";
+      return;
+    }
+    EditServico.Equipe.Add(new ServicoEquipeItem
+    {
+      MembroId = m.Id,
+      Papel = string.IsNullOrWhiteSpace(NovoMembroPapel) ? m.Funcao : NovoMembroPapel.Trim(),
+      ComissaoPct = m.ComissaoPct ?? 0
+    });
+    ErroModal = "";
+    AvisoSucesso = $"{m.Nome} alocado na equipe do serviço.";
+    Store.NotifyStateChanged();
+  }
+
+  private void RemoverMembroServico(ServicoEquipeItem eq)
+  {
+    if (EditServico is null) return;
+    EditServico.Equipe.Remove(eq);
+    Store.NotifyStateChanged();
+  }
+
+  private void AdicionarAnexo()
+  {
+    if (EditServico is null) return;
+    if (string.IsNullOrWhiteSpace(NovoAnexoNome))
+    {
+      ErroModal = "Informe o nome do arquivo.";
+      return;
+    }
+    var novoId = EditServico.Anexos.Count > 0 ? EditServico.Anexos.Max(x => x.Id) + 1 : 1;
+    EditServico.Anexos.Add(new AnexoServicoItem
+    {
+      Id = novoId,
+      NomeArquivo = NovoAnexoNome.Trim(),
+      Tipo = NovoAnexoTipo,
+      Momento = NovoAnexoTipo == "foto" ? NovoAnexoMomento : "andamento",
+      EtapaNome = NovoAnexoEtapa,
+      VisivelPortal = NovoAnexoTipo == "foto" && NovoAnexoVisivelPortal,
+      DataUpload = "30/10/2026",
+      Ativo = true
+    });
+    NovoAnexoNome = "";
+    ErroModal = "";
+    AvisoSucesso = "Anexo incluído no serviço.";
+    Store.NotifyStateChanged();
+  }
+
+  private void FecharModal()
+  {
+    ModalAberto = false;
+    EditServico = null;
+  }
+}

@@ -1,88 +1,504 @@
+@inject MockErpStore Store
+
+<p class="hint">
+    Cadastro unificado de Funcionários, Colaboradores e Parceiros — comissão % aplica-se somente a Parceiros e é copiada como snapshot ao vincular no Serviço.
+</p>
+
+<!-- Toolbar -->
 <div class="toolbar">
-    <div class="actions">
-        <button class="btn primary" @onclick="Novo">+ Nova pessoa</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;flex:1">
+        @if (Store.HasPerm("equipe.edit"))
+        {
+            <button class="btn primary" @onclick="AbrirNovo">+ Novo membro</button>
+        }
+        <input type="search"
+               placeholder="Buscar nome, função/especialidade ou celular..."
+               value="@Busca"
+               @oninput="OnBuscaChanged"
+               style="background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:7px 11px;font-size:13px;min-width:220px;flex:1;max-width:300px" />
+
+        <select value="@FiltroPerfil" @onchange='e => { FiltroPerfil = e.Value?.ToString() ?? "todos"; Page = 1; }'
+                style="background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:13px">
+            <option value="todos">Perfil: Todos (@Store.Equipe.Count)</option>
+            <option value="Funcionário">Funcionário</option>
+            <option value="Colaborador">Colaborador</option>
+            <option value="Parceiro">Parceiro</option>
+        </select>
+
+        <select value="@FiltroStatus" @onchange='e => { FiltroStatus = e.Value?.ToString() ?? "todos"; Page = 1; }'
+                style="background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:13px">
+            <option value="todos">Status: Todos</option>
+            <option value="ativo">Ativos</option>
+            <option value="inativo">Inativos</option>
+        </select>
     </div>
+
     <div class="pager">
-        <button disabled title="Início">⏮</button><button disabled title="Anterior">◀</button>
-        <span>1 / 1</span>
-        <button disabled title="Próximo">▶</button><button disabled title="Fim">⏭</button>
+        <span>@Filtered.Count membro(s) · Pág. @Page/@TotalPages</span>
+        <button disabled="@(Page <= 1)" @onclick="() => Page = 1">⏮</button>
+        <button disabled="@(Page <= 1)" @onclick="() => Page--">◀</button>
+        <button disabled="@(Page >= TotalPages)" @onclick="() => Page++">▶</button>
+        <button disabled="@(Page >= TotalPages)" @onclick="() => Page = TotalPages">⏭</button>
     </div>
 </div>
 
+<!-- Grid Unificado -->
 <div class="grid-card">
     <table class="grid">
-        <thead><tr><th>Perfil</th><th>Nome</th><th class="hide-m">Função / Especialidade</th><th class="hide-m">Celular</th><th class="hide-m">Comissão</th><th></th></tr></thead>
+        <thead>
+            <tr>
+                <th>Status</th>
+                <th>Perfil</th>
+                <th>Nome</th>
+                <th>Função / Especialidade</th>
+                <th>Celular</th>
+                <th class="num">% Comissão</th>
+                <th class="num">Serviços Alocados</th>
+            </tr>
+        </thead>
         <tbody>
-            @foreach (var p in Rows)
+            @if (Paged.Count == 0)
             {
-                <tr @onclick="() => Editar(p)">
-                    <td><span class="badge @p.Badge">@p.Perfil</span></td>
-                    <td>@p.Nome <i class="dot @(p.Ativo ? "on" : "off")" title="@(p.Ativo ? "Ativo" : "Inativo")"></i></td>
-                    <td class="hide-m">@p.Funcao</td>
-                    <td class="mono hide-m">@p.Celular</td>
-                    <td class="hide-m">@(p.Comissao is null ? "—" : $"{p.Comissao}%")</td>
-                    <td></td>
+                <tr>
+                    <td colspan="7" class="muted" style="text-align:center;padding:28px">
+                        Nenhum membro da equipe encontrado com os filtros selecionados.
+                    </td>
+                </tr>
+            }
+            @foreach (var m in Paged)
+            {
+                var qtdServicos = CountServicosMembro(m.Id);
+                <tr class='@(Editing?.Id == m.Id ? "sel" : "")'
+                    style='@(!m.Ativo ? "opacity:.6" : "")'
+                    @onclick="() => AbrirEdicao(m)">
+                    <td>
+                        <span class='dot @(m.Ativo ? "on" : "off")' style="margin-left:0;margin-right:6px"></span>
+                        <span>@(m.Ativo ? "Ativo" : "Inativo")</span>
+                    </td>
+                    <td>
+                        <span class="badge @m.BadgeCls">@m.Perfil</span>
+                    </td>
+                    <td>
+                        <strong>@m.Nome</strong>
+                        @if (!m.Ativo && !string.IsNullOrWhiteSpace(m.MotivoInativacao))
+                        {
+                            <div><small class="muted">Inativo: @m.MotivoInativacao</small></div>
+                        }
+                    </td>
+                    <td>@m.Funcao</td>
+                    <td class="mono">@m.Celular</td>
+                    <td class="num mono">
+                        @if (m.Perfil == "Parceiro" && m.ComissaoPct.HasValue)
+                        {
+                            <span class="badge b-parc">@(m.ComissaoPct)%</span>
+                        }
+                        else
+                        {
+                            <span class="muted">—</span>
+                        }
+                    </td>
+                    <td class="num mono">
+                        @if (qtdServicos > 0)
+                        {
+                            <span class="badge b-info">🛠 @qtdServicos serviço(s)</span>
+                        }
+                        else
+                        {
+                            <span class="muted">0</span>
+                        }
+                    </td>
                 </tr>
             }
         </tbody>
     </table>
 </div>
 
-@if (Form is not null)
+<!-- Modal Cadastro + Serviços & Comissões -->
+@if (ShowModal && Editing is not null)
 {
-    <div class="modal-back" @onclick="Fechar">
-        <div class="modal" @onclick:stopPropagation>
-            <h3>@(IsNew ? "Nova pessoa" : "Pessoa")</h3>
-            <label class="fld">Perfil
-                <select @bind="Form.Perfil">
-                    <option>Funcionário</option><option>Colaborador</option><option>Parceiro</option>
-                </select>
-            </label>
-            <label class="fld">Nome<input @bind="Form.Nome"></label>
-            <label class="fld">Função / Especialidade<input @bind="Form.Funcao"></label>
-            <div class="fld-row">
-                <label class="fld">Celular<input @bind="Form.Celular" placeholder="(11) 9xxxx-xxxx"></label>
-                @if (Form.Perfil == "Parceiro")
+    var canEdit = Store.HasPerm("equipe.edit");
+    <div class="modal-back" @onclick="FecharModal">
+        <div class="modal" style="width:min(680px,96vw);max-height:90vh;overflow-y:auto" @onclick:stopPropagation="true">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+                <h3>@(IsNew ? "Novo Membro da Equipe" : Editing.Nome)</h3>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <span class="badge @GetBadgeCls(FormPerfil)">@FormPerfil</span>
+                    <span class='badge @(FormAtivo ? "b-ok" : "b-muted")'>@(FormAtivo ? "Ativo" : "Inativo")</span>
+                </div>
+            </div>
+
+            @if (!IsNew)
+            {
+                <div class="tabs" style="margin-bottom:4px">
+                    <button type="button" class='tab @(ModalTab == 0 ? "on" : "")' @onclick="() => ModalTab = 0">
+                        1. Cadastro
+                    </button>
+                    <button type="button" class='tab @(ModalTab == 1 ? "on" : "")' @onclick="() => ModalTab = 1">
+                        2. Serviços & Comissões Vinculadas (@CountServicosMembro(Editing.Id))
+                    </button>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(ErroModal))
+            {
+                <div style="background:rgba(192,57,43,.12);color:var(--err);border:1px solid var(--err);border-radius:8px;padding:9px 12px;font-size:12.5px">
+                    ⚠ @ErroModal
+                </div>
+            }
+
+            @if (ModalTab == 0)
+            {
+                <div class="fld-row">
+                    <label class="fld">
+                        Perfil *
+                        <select @bind="FormPerfil" disabled="@(!canEdit)">
+                            <option value="Funcionário">Funcionário (Interno / Fixo)</option>
+                            <option value="Colaborador">Colaborador (Campo / Oficina)</option>
+                            <option value="Parceiro">Parceiro (Arquiteto / Eng. / Indicador)</option>
+                        </select>
+                    </label>
+
+                    <label class="fld">
+                        Status Cadastral
+                        <select value='@(FormAtivo ? "ativo" : "inativo")' disabled="@(!canEdit)"
+                                @onchange='e => FormAtivo = (e.Value?.ToString() == "ativo")'>
+                            <option value="ativo">Ativo</option>
+                            <option value="inativo">Inativo (Sem exclusão)</option>
+                        </select>
+                    </label>
+                </div>
+
+                <div class="fld-row">
+                    <label class="fld">
+                        Nome Completo / Razão Social *
+                        <input @bind="FormNome" disabled="@(!canEdit)" placeholder="Ex.: Arq. Sofia Ribeiro" />
+                    </label>
+
+                    <label class="fld">
+                        Função / Especialidade *
+                        <input @bind="FormFuncao" disabled="@(!canEdit)" placeholder="Ex.: Marceneiro Sênior, Arquiteta..." />
+                    </label>
+                </div>
+
+                <div class="fld-row">
+                    <label class="fld">
+                        Celular / WhatsApp *
+                        <input @bind="FormCelular" disabled="@(!canEdit)" placeholder="(11) 90000-0000" />
+                    </label>
+
+                    <label class="fld">
+                        E-mail
+                        <input type="email" @bind="FormEmail" disabled="@(!canEdit)" placeholder="contato@email.com.br" />
+                    </label>
+                </div>
+
+                <div class="fld-row">
+                    <label class="fld">
+                        CPF / CNPJ
+                        <input @bind="FormCpfCnpj" disabled="@(!canEdit)" placeholder="000.000.000-00 ou 00.000.000/0001-00" />
+                    </label>
+
+                    <label class="fld">
+                        Chave PIX / Dados Bancários
+                        <input @bind="FormPix" disabled="@(!canEdit)" placeholder="Chave PIX para pagamentos ou comissões" />
+                    </label>
+                </div>
+
+                @if (FormPerfil == "Parceiro")
                 {
-                    <label class="fld">Comissão %<input @bind="Form.ComissaoTxt" placeholder="10"></label>
+                    <div style="background:rgba(46,158,91,.08);border:1px solid var(--ok);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px">
+                        <div class="fld-row">
+                            <label class="fld">
+                                Tipo de Parceiro
+                                <select @bind="FormTipoParceiro" disabled="@(!canEdit)">
+                                    <option value="arquiteto">Arquiteto(a) / Interiores</option>
+                                    <option value="engenheiro">Engenheiro(a)</option>
+                                    <option value="fornecedor">Fornecedor Parceiro</option>
+                                    <option value="indicador">Indicador Comercial</option>
+                                </select>
+                            </label>
+
+                            <label class="fld">
+                                % Comissão Padrão *
+                                <input type="number" min="0" max="50" @bind="FormComissaoPct" disabled="@(!canEdit)" />
+                            </label>
+                        </div>
+                        <small class="muted" style="font-size:12px">
+                            ℹ <strong>Regra de Snapshot:</strong> Ao alocar este Parceiro em um Serviço, o sistema copia um <b>snapshot</b> deste percentual para o serviço (`ServicoEquipe.ComissaoPct`). Alterar este `%` no futuro não modifica serviços já contratados.
+                        </small>
+                    </div>
                 }
-            </div>
-            <label class="fld chk"><input type="checkbox" @bind="Form.Ativo"> Ativo</label>
-            <div class="actions end">
-                <button class="btn" @onclick="Fechar">Cancelar</button>
-                @if (!IsNew) { <button class="btn danger" @onclick="Inativar">Inativar</button> }
-                <button class="btn primary" @onclick="Salvar">Salvar</button>
-            </div>
+
+                @if (!FormAtivo)
+                {
+                    <label class="fld">
+                        Motivo da Inativação (Obrigatório para inativar) *
+                        <input @bind="FormMotivoInativacao" disabled="@(!canEdit)" placeholder="Informe o motivo do desligamento/inativação..." />
+                    </label>
+                }
+
+                <div class="actions end" style="margin-top:6px">
+                    <button type="button" class="btn" @onclick="FecharModal">Cancelar</button>
+                    @if (canEdit)
+                    {
+                        <button type="button" class="btn primary" @onclick="SalvarModal">Salvar</button>
+                    }
+                </div>
+            }
+            else
+            {
+                <!-- Aba 2: Serviços Alocados e Comissões/Pagamentos -->
+                var servicosAlocados = Store.Servicos.Where(s => s.Equipe.Any(eq => eq.MembroId == Editing.Id)).ToList();
+
+                <div style="display:flex;flex-direction:column;gap:12px">
+                    <div>
+                        <h4 style="margin:0 0 8px;font-size:13.5px">Serviços onde @Editing.Nome atua (@servicosAlocados.Count)</h4>
+                        @if (servicosAlocados.Count == 0)
+                        {
+                            <p class="muted" style="font-size:13px;margin:0">Nenhum serviço vinculado até o momento.</p>
+                        }
+                        else
+                        {
+                            <div class="grid-card">
+                                <table class="grid" style="min-width:0">
+                                    <thead>
+                                        <tr>
+                                            <th>Serviço</th>
+                                            <th>Cliente</th>
+                                            <th>Papel no Serviço</th>
+                                            <th class="num">% Snapshot</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var s in servicosAlocados)
+                                        {
+                                            var eq = s.Equipe.First(x => x.MembroId == Editing.Id);
+                                            <tr>
+                                                <td><strong>#@s.Id — @(Store.GetTipoServico(s.TipoServicoId)?.Nome)</strong></td>
+                                                <td>@(Store.GetCliente(s.ClienteId)?.Nome)</td>
+                                                <td>@eq.Papel</td>
+                                                <td class="num mono">@(eq.ComissaoPct > 0 ? $"{eq.ComissaoPct}%" : "—")</td>
+                                                <td><span class="badge b-info">@Store.GetFaseAtualServico(s)</span></td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+
+                    @if (Store.HasPerm("financeiro.view"))
+                    {
+                        var lancsMembro = Store.Lancamentos.Where(l => l.MembroEquipeId == Editing.Id).ToList();
+                        <div>
+                            <h4 style="margin:6px 0 8px;font-size:13.5px">
+                                Extrato Financeiro / Comissões (`financeiro.view` · @lancsMembro.Count lançamento(s))
+                            </h4>
+                            @if (lancsMembro.Count == 0)
+                            {
+                                <p class="muted" style="font-size:13px;margin:0">Nenhum lançamento financeiro registrado para este membro.</p>
+                            }
+                            else
+                            {
+                                <div class="grid-card">
+                                    <table class="grid" style="min-width:0">
+                                        <thead>
+                                            <tr>
+                                                <th>Status</th>
+                                                <th>Descrição</th>
+                                                <th>Vencimento</th>
+                                                <th class="num">Valor</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var l in lancsMembro)
+                                            {
+                                                <tr>
+                                                    <td>
+                                                        <span class='badge @(l.Status == "pago" ? "b-ok" : l.Status == "vencido" ? "b-err" : "b-warn")'>
+                                                            @l.Status
+                                                        </span>
+                                                    </td>
+                                                    <td>@l.Descricao</td>
+                                                    <td class="mono">@l.Vencimento.ToString("dd/MM/yyyy")</td>
+                                                    <td class="num mono"><strong>@MockErpStore.FormatMoeda(l.ValorCentavos)</strong></td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="background:var(--bg);border:1px dashed var(--line);border-radius:10px;padding:10px 12px;font-size:12.5px" class="muted">
+                            🔒 Os valores em R$ de comissões e pagamentos são restritos aos perfis com permissão <code>financeiro.view</code>.
+                        </div>
+                    }
+
+                    <div class="actions end">
+                        <button type="button" class="btn" @onclick="FecharModal">Fechar</button>
+                    </div>
+                </div>
+            }
         </div>
     </div>
 }
 
 @code {
-    class Pessoa
+    private string Busca = "";
+    private string FiltroPerfil = "todos";
+    private string FiltroStatus = "todos";
+    private int Page = 1;
+    private const int PageSize = 8;
+
+    private bool ShowModal;
+    private bool IsNew;
+    private int ModalTab;
+    private string ErroModal = "";
+    private MembroEquipe? Editing;
+
+    // Form fields
+    private string FormPerfil = "Colaborador";
+    private string FormNome = "";
+    private string FormFuncao = "";
+    private string FormTipoParceiro = "arquiteto";
+    private string FormCelular = "";
+    private string FormEmail = "";
+    private string FormCpfCnpj = "";
+    private string FormPix = "";
+    private int FormComissaoPct = 10;
+    private bool FormAtivo = true;
+    private string FormMotivoInativacao = "";
+
+    private List<MembroEquipe> Filtered => Store.Equipe
+        .Where(m =>
+        {
+            if (FiltroPerfil != "todos" && m.Perfil != FiltroPerfil) return false;
+            if (FiltroStatus == "ativo" && !m.Ativo) return false;
+            if (FiltroStatus == "inativo" && m.Ativo) return false;
+            if (!string.IsNullOrWhiteSpace(Busca))
+            {
+                var q = Busca.Trim().ToLowerInvariant();
+                if (!m.Nome.ToLowerInvariant().Contains(q) &&
+                    !m.Funcao.ToLowerInvariant().Contains(q) &&
+                    !m.Celular.ToLowerInvariant().Contains(q))
+                    return false;
+            }
+            return true;
+        })
+        .ToList();
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(Filtered.Count / (double)PageSize));
+    private List<MembroEquipe> Paged => Filtered.Skip((Page - 1) * PageSize).Take(PageSize).ToList();
+
+    private void OnBuscaChanged(ChangeEventArgs e)
     {
-        public int Id; public string Perfil = "Funcionário"; public string Nome = ""; public string Funcao = "";
-        public string Celular = ""; public int? Comissao; public bool Ativo = true;
-        public string Badge => Perfil switch { "Colaborador" => "b-colab", "Parceiro" => "b-parc", _ => "b-func" };
-        public string ComissaoTxt { get => Comissao?.ToString() ?? ""; set => Comissao = int.TryParse(value, out var v) ? v : null; }
+        Busca = e.Value?.ToString() ?? "";
+        Page = 1;
     }
 
-    List<Pessoa> Rows =
-    [
-        new() { Id = 1, Perfil = "Funcionário", Nome = "João Marceneiro", Funcao = "Marceneiro sênior", Celular = "(11) 91111-0001" },
-        new() { Id = 2, Perfil = "Funcionário", Nome = "Pedro Ajudante", Funcao = "Ajudante de obras", Celular = "(11) 92222-0002" },
-        new() { Id = 3, Perfil = "Colaborador", Nome = "Marcos Eletricista", Funcao = "Elétrica", Celular = "(11) 93333-0003" },
-        new() { Id = 4, Perfil = "Colaborador", Nome = "Luiz Gesseiro", Funcao = "Gesso e drywall", Celular = "(11) 94444-0004", Ativo = false },
-        new() { Id = 5, Perfil = "Parceiro", Nome = "Arq. Sofia Ribeiro", Funcao = "Arquiteta — projetos", Celular = "(11) 95555-0005", Comissao = 12 },
-        new() { Id = 6, Perfil = "Parceiro", Nome = "Eng. Ricardo Paz", Funcao = "Engenheiro — estrutural", Celular = "(11) 96666-0006", Comissao = 8 },
-        new() { Id = 7, Perfil = "Parceiro", Nome = "Marmoraria Itália", Funcao = "Fornecedor — pedras", Celular = "(11) 97777-0007", Comissao = 5 },
-    ];
+    private int CountServicosMembro(int membroId) =>
+        Store.Servicos.Count(s => s.Equipe.Any(eq => eq.MembroId == membroId));
 
-    Pessoa? Form;
-    bool IsNew;
+    private static string GetBadgeCls(string perfil) => perfil switch
+    {
+        "Colaborador" => "b-colab",
+        "Parceiro" => "b-parc",
+        _ => "b-func"
+    };
 
-    void Novo() { Form = new Pessoa(); IsNew = true; }
-    void Editar(Pessoa p) { Form = p; IsNew = false; }
-    void Fechar() => Form = null;
-    void Salvar() { if (IsNew) { Form!.Id = Rows.Count + 1; Rows.Insert(0, Form!); } Fechar(); }
-    void Inativar() { Form!.Ativo = false; Fechar(); }
+    private void AbrirNovo()
+    {
+        IsNew = true;
+        ModalTab = 0;
+        ErroModal = "";
+        Editing = new MembroEquipe();
+        FormPerfil = "Colaborador";
+        FormNome = "";
+        FormFuncao = "";
+        FormTipoParceiro = "arquiteto";
+        FormCelular = "";
+        FormEmail = "";
+        FormCpfCnpj = "";
+        FormPix = "";
+        FormComissaoPct = 10;
+        FormAtivo = true;
+        FormMotivoInativacao = "";
+        ShowModal = true;
+    }
+
+    private void AbrirEdicao(MembroEquipe m)
+    {
+        IsNew = false;
+        ModalTab = 0;
+        ErroModal = "";
+        Editing = m;
+        FormPerfil = m.Perfil;
+        FormNome = m.Nome;
+        FormFuncao = m.Funcao;
+        FormTipoParceiro = m.TipoParceiro;
+        FormCelular = m.Celular;
+        FormEmail = m.Email;
+        FormCpfCnpj = m.CpfCnpj;
+        FormPix = m.Pix;
+        FormComissaoPct = m.ComissaoPct ?? 10;
+        FormAtivo = m.Ativo;
+        FormMotivoInativacao = m.MotivoInativacao;
+        ShowModal = true;
+    }
+
+    private void SalvarModal()
+    {
+        if (Editing is null) return;
+        if (string.IsNullOrWhiteSpace(FormNome))
+        {
+            ErroModal = "Informe o nome do membro da equipe.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(FormFuncao))
+        {
+            ErroModal = "Informe a função ou especialidade.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(FormCelular))
+        {
+            ErroModal = "Informe o celular de contato.";
+            return;
+        }
+        if (!FormAtivo && string.IsNullOrWhiteSpace(FormMotivoInativacao))
+        {
+            ErroModal = "Para inativar um membro da equipe, informe obrigatoriamente o motivo.";
+            return;
+        }
+
+        Editing.Perfil = FormPerfil;
+        Editing.Nome = FormNome.Trim();
+        Editing.Funcao = FormFuncao.Trim();
+        Editing.TipoParceiro = FormTipoParceiro;
+        Editing.Celular = FormCelular.Trim();
+        Editing.Email = FormEmail.Trim();
+        Editing.CpfCnpj = FormCpfCnpj.Trim();
+        Editing.Pix = FormPix.Trim();
+        Editing.ComissaoPct = FormPerfil == "Parceiro" ? FormComissaoPct : null;
+        Editing.Ativo = FormAtivo;
+        Editing.MotivoInativacao = FormAtivo ? "" : FormMotivoInativacao.Trim();
+
+        if (IsNew)
+        {
+            Editing.Id = Store.Equipe.Count > 0 ? Store.Equipe.Max(x => x.Id) + 1 : 1;
+            Store.Equipe.Add(Editing);
+        }
+
+        Store.NotifyStateChanged();
+        ShowModal = false;
+    }
+
+    private void FecharModal()
+    {
+        ShowModal = false;
+        ErroModal = "";
+    }
 }

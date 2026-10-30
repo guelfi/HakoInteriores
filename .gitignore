@@ -41,3 +41,7 @@ cloudflared.exe
 # .NET build artifacts
 backend/**/bin/
 backend/**/obj/
+
+# Local UI/UX HTML previews
+/temp/
+temp/

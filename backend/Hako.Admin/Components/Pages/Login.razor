@@ -1,27 +1,82 @@
 @page "/"
 @rendermode InteractiveServer
 @inject IConfiguration Config
+@inject MockErpStore Store
+@inject NavigationManager Nav
 
 <PageTitle>Hako · Entrar</PageTitle>
 
 <div class="login-shell">
-    <div class="login-card">
+    <form class="login-card" @onsubmit="Entrar" @onsubmit:preventDefault>
         <div class="login-logo">HAKO<span>INTERIORES</span><em>Marcenaria e Reformas</em></div>
         <div class="login-admin">Hako<strong>Admin</strong></div>
-        <label class="fld">Usuário ou e-mail<input placeholder="admin" autocomplete="username"></label>
-        <label class="fld">Senha
-            <span class="pwd"><input type="@(Ver ? "text" : "password")" placeholder="••••••••" autocomplete="current-password"><button type="button" class="eye" @onclick="() => Ver = !Ver" title="@(Ver ? "Ocultar senha" : "Mostrar senha")">@EyeIcon(Ver)</button></span>
+
+        <label class="fld">
+            Usuário ou e-mail
+            <input @bind="UsuarioInput" @bind:event="oninput" placeholder="admin" autocomplete="username" />
         </label>
-        <a class="btn primary login-btn" href="./home">Entrar</a>
+
+        <label class="fld">
+            Senha
+            <span class="pwd">
+                <input type="@(Ver ? "text" : "password")" @bind="SenhaInput" placeholder="••••••••" autocomplete="current-password" />
+                <button type="button" class="eye" @onclick="() => Ver = !Ver" title="@(Ver ? "Ocultar senha" : "Mostrar senha")">@EyeIcon(Ver)</button>
+            </span>
+        </label>
+
+        @if (!string.IsNullOrEmpty(ErroMsg))
+        {
+            <small style="color:var(--err,#c0392b);text-align:center;font-weight:600">@ErroMsg</small>
+        }
+
+        <button type="submit" class="btn primary login-btn">Entrar</button>
         <a class="login-forgot" href="#">Esqueci a senha</a>
         <a class="login-forgot login-site" href="@SiteUrl">↩ Voltar ao site</a>
         <small class="muted">Acesso restrito à equipe Hako Interiores</small>
-    </div>
+    </form>
 </div>
 
 @code {
     string SiteUrl => Config["SiteUrl"] ?? "/";
+    string UsuarioInput = "";
+    string SenhaInput = "";
+    string? ErroMsg;
     bool Ver;
+
+    void Entrar()
+    {
+        ErroMsg = null;
+        var raw = (UsuarioInput ?? "").Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(raw))
+            raw = "admin";
+
+        if (raw is "clientes" or "cliente")
+        {
+            Nav.NavigateTo("obra/mcosta-402-a8f3k2m9x7");
+            return;
+        }
+
+        string? role = raw switch
+        {
+            "admin" => "Admin",
+            "comercial" => "Comercial",
+            "financeiro" or "financeito" => "Financeiro",
+            "serviços" or "servicos" or "servico" or "serviço" => "Serviços",
+            "equipe" => "Equipe",
+            _ => null
+        };
+
+        if (role is null)
+        {
+            ErroMsg = "Usuário ou credenciais inválidas.";
+            return;
+        }
+
+        Store.CurrentRole = role;
+        Store.ActiveSection = "dash";
+        Store.NotifyStateChanged();
+        Nav.NavigateTo("home");
+    }
 
     static RenderFragment EyeIcon(bool open) => open ? EyeOpen : EyeClosed;
     static readonly RenderFragment EyeOpen = @<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>;

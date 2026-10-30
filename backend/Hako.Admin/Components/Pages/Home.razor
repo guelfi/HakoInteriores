@@ -1,6 +1,8 @@
 @page "/home"
 @rendermode InteractiveServer
 @inject IConfiguration Config
+@inject MockErpStore Store
+@implements IDisposable
 
 <PageTitle>Hako · @Current.Label</PageTitle>
 
@@ -11,9 +13,9 @@
     <aside class="sidebar">
         <div class="brand"><span class="logo-mark">H</span><span class="logo-text">Hako<strong>Admin</strong></span></div>
         <nav>
-            @foreach (var item in NavItems.Where(n => HasPerm(n.Perm)))
+            @foreach (var item in NavItems.Where(CanSeeNav))
             {
-                <button class="nav-item @(item.Key == Active ? "active" : "")" title="@item.Label"
+                <button class="nav-item @(item.Key == Current.Key ? "active" : "")" title="@item.Label"
                         @onclick="() => Select(item.Key)">
                     <i>@item.Icon</i><span>@item.Label</span>
                 </button>
@@ -31,32 +33,34 @@
         <header class="topbar">
             <label for="nav-toggle" class="hamb">☰</label>
             <h1>@Current.Label</h1>
+
             <div class="user-menu">
                 <button class="user-btn" @onclick="() => MenuAberto = !MenuAberto">
-                    <span class="avatar">AH</span><span class="u-label">Admin Hako ▾</span>
+                    <span class="avatar">@AvatarInitials</span><span class="u-label">@Store.CurrentRole Hako ▾</span>
                 </button>
                 @if (MenuAberto)
                 {
                     <div class="menu">
-                        <button class="menu-item" @onclick="AbrirPerfil">◉ Meu perfil</button>
+                        <button class="menu-item" @onclick="AbrirPerfil">◉ Editar perfil</button>
                         <a class="menu-item" href="./">⎋ Sair</a>
                     </div>
                 }
             </div>
         </header>
 
-        <main class="page" @onclick="FecharMenus">
+        <main class="page @(Current.Key == "dash" ? "page-dash" : "")" @onclick="FecharMenus">
             @switch (Current.Key)
             {
                 case "clientes": <ClientesSection /> break;
                 case "funil": <FunilSection /> break;
-                case "obras": <ObrasSection /> break;
+                case "servicos": <ServicosSection /> break;
                 case "kanban": <KanbanSection /> break;
+                case "cronograma": <CronogramaSection /> break;
                 case "financeiro": <FinanceiroSection /> break;
                 case "contratos": <ContratosSection /> break;
                 case "equipe": <EquipeSection /> break;
-                case "config": <PlaceholderSection Nome="Config" Desc="Tipos de serviço, templates de etapa e parâmetros do sistema (ex.: kanban.alertaPct)." /> break;
-                default: <DashboardSection HasPerm="HasPerm" /> break;
+                case "config": <ConfigSection /> break;
+                default: <DashboardSection /> break;
             }
         </main>
     </div>
@@ -65,9 +69,9 @@
     {
         <div class="modal-back" @onclick="() => ShowPerfil = false">
             <div class="modal" @onclick:stopPropagation>
-                <h3>Meu perfil</h3>
-                <label class="fld">Nome de usuário<input value="admin" disabled></label>
-                <label class="fld">Nome completo<input value="Administrador Hako"></label>
+                <h3>Editar perfil</h3>
+                <label class="fld">Perfil ativo<input value="@Store.CurrentRole" disabled></label>
+                <label class="fld">Nome completo<input value="@($"{Store.CurrentRole} Hako")"></label>
                 <label class="fld">Nova senha
                     <span class="pwd"><input type="@(Ver1 ? "text" : "password")" placeholder="••••••••"><button type="button" class="eye" @onclick="() => Ver1 = !Ver1" title="@(Ver1 ? "Ocultar senha" : "Mostrar senha")">@EyeIcon(Ver1)</button></span>
                 </label>
@@ -77,7 +81,7 @@
                 <small class="muted">Mín. 8 caracteres com maiúscula, minúscula, número e símbolo.</small>
                 <div class="actions end">
                     <button class="btn" @onclick="() => ShowPerfil = false">Cancelar</button>
-                    <button class="btn primary">Salvar</button>
+                    <button class="btn primary" @onclick="() => ShowPerfil = false">Salvar</button>
                 </div>
             </div>
         </div>
@@ -85,49 +89,48 @@
 </div>
 
 @code {
-    const string Role = "Admin"; // mock — virá do Identity na Fase 1
-    string Active = "dash";
     bool ShowPerfil;
     bool MenuAberto;
     bool NavOpen;
     bool Ver1, Ver2;
     string SiteUrl => Config["SiteUrl"] ?? "/";
 
-    static readonly Dictionary<string, string[]> Perms = new()
+    string AvatarInitials => Store.CurrentRole switch
     {
-        ["Admin"] = ["clientes.*", "funil.*", "contratos.*", "obras.*", "financeiro.*", "equipe.*", "config.*"],
-        ["Comercial"] = ["clientes.*", "funil.*", "contratos.*", "obras.view"],
-        ["Financeiro"] = ["financeiro.*", "clientes.view", "obras.view"],
-        ["Obras"] = ["obras.*", "clientes.view", "equipe.view"],
+        "Admin" => "AD",
+        "Comercial" => "CM",
+        "Financeiro" => "FN",
+        "Serviços" => "SV",
+        "Equipe" => "EQ",
+        _ => "HK"
     };
 
-    bool HasPerm(string need)
-    {
-        var perms = Perms.GetValueOrDefault(Role) ?? [];
-        var res = need.Split('.')[0];
-        return perms.Any(p => p == need || p == $"{res}.*");
-    }
+    protected override void OnInitialized() => Store.OnChange += StateHasChanged;
+    public void Dispose() => Store.OnChange -= StateHasChanged;
 
     record Nav(string Key, string Label, string Icon, string Perm);
     static readonly Nav[] NavItems =
     [
-        new("dash", "Dashboard", "▣", "clientes.view"),
+        new("dash", "Dashboard", "▣", "*"),
         new("clientes", "Clientes", "◉", "clientes.view"),
         new("funil", "Funil", "◫", "funil.view"),
-        new("obras", "Obras", "▤", "obras.view"),
-        new("kanban", "Kanban", "▦", "obras.edit"),
+        new("servicos", "Serviços", "▤", "servicos.view"),
+        new("kanban", "Kanban", "▦", "servicos.view"),
+        new("cronograma", "Cronograma", "📅", "servicos.view"),
         new("financeiro", "Financeiro", "◈", "financeiro.view"),
         new("contratos", "Contratos", "✎", "contratos.view"),
         new("equipe", "Equipe", "⚒", "equipe.view"),
         new("config", "Config", "⚙", "config.view"),
     ];
 
-    Nav Current => NavItems.FirstOrDefault(n => n.Key == Active && HasPerm(n.Perm))
-                   ?? NavItems.First(n => HasPerm(n.Perm));
+    bool CanSeeNav(Nav n) => n.Perm == "*" || Store.HasPerm(n.Perm);
+
+    Nav Current => NavItems.FirstOrDefault(n => n.Key == Store.ActiveSection && CanSeeNav(n))
+                   ?? NavItems.First(CanSeeNav);
 
     void Select(string key)
     {
-        Active = key;
+        Store.ActiveSection = key;
         NavOpen = false;
     }
 

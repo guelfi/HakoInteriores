@@ -1,0 +1,500 @@
+@page "/obra/{Token}"
+@rendermode InteractiveServer
+@inject MockErpStore Store
+@inject NavigationManager Nav
+
+<PageTitle>Portal do Cliente — @Store.EmpresaNomeFantasia</PageTitle>
+
+<div class="admin-shell" style="display:block;height:100dvh;overflow-y:auto;background:var(--bg);color:var(--text)">
+    <!-- Cabeçalho Oficial do Portal do Cliente -->
+    <header style="background:var(--card);border-bottom:1px solid var(--line);padding:16px 24px">
+        <div style="max-width:1140px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px">
+            <div style="display:flex;align-items:center;gap:12px">
+                <div class="logo-mark" style="width:40px;height:40px;font-size:17px">H</div>
+                <div>
+                    <div style="font-family:Georgia,serif;font-size:19px;font-weight:700">@Store.EmpresaNomeFantasia</div>
+                    <div class="muted" style="font-size:12px">Portal de Acompanhamento do Cliente</div>
+                </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                <div style="text-align:right">
+                    <div style="font-weight:600;font-size:14.5px">Olá, @ClienteAtual.Nome</div>
+                    <div class="muted" style="font-size:11.5px">
+                        @(string.IsNullOrWhiteSpace(ClienteAtual.EnderecoCompleto) ? $"{ClienteAtual.Cidade}/{ClienteAtual.Uf}" : ClienteAtual.EnderecoCompleto)
+                    </div>
+                </div>
+                <select value="@ClienteAtual.PortalToken" @onchange="TrocarClienteDemo" title="Alternar imóvel/projeto"
+                        style="background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12.5px">
+                    @foreach (var c in Store.Clientes)
+                    {
+                        <option value="@c.PortalToken">@c.Nome</option>
+                    }
+                </select>
+                <a href="./" class="btn" style="padding:6px 12px;font-size:12.5px">⎋ Sair</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Conteúdo Principal em 3 Seções Progressivas -->
+    <main style="max-width:1140px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:24px">
+
+        @if (!string.IsNullOrEmpty(FeedbackPortal))
+        {
+            <div style="background:rgba(46,158,91,.14);color:var(--ok);border:1px solid var(--ok);border-radius:12px;padding:14px 18px;font-size:13.5px;display:flex;justify-content:space-between;align-items:center">
+                <span>✓ <strong>@FeedbackPortal</strong></span>
+                <button type="button" class="btn" style="padding:4px 9px" @onclick="() => FeedbackPortal = string.Empty">✕</button>
+            </div>
+        }
+
+        <!-- =========================================================
+             1. NEGOCIAÇÃO, ORÇAMENTOS & CONTRATOS
+             ========================================================= -->
+        <section class="grid-card" style="padding:20px">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+                <div>
+                    <span class="w-label">ETAPA 1 · COMERCIAL E FORMALIZAÇÃO</span>
+                    <h2 style="margin:4px 0 0;font-size:18px;font-family:Georgia,serif">1. Negociação, Orçamentos & Contratos</h2>
+                </div>
+                <span class="badge b-info">Provedor de Assinatura: @Store.SignatureProviderAtivo</span>
+            </div>
+
+            @{
+                var negsCliente = Store.Negociacoes.Where(n => n.ClienteId == ClienteAtual.Id).ToList();
+                var contratosCliente = Store.ContratosEmitidos.Where(c => c.ClienteId == ClienteAtual.Id).ToList();
+            }
+
+            @if (negsCliente.Count == 0 && contratosCliente.Count == 0)
+            {
+                <p class="muted" style="font-size:13.5px;margin:0">
+                    Nenhuma negociação ou orçamento pendente no momento. Confira abaixo seus serviços contratados.
+                </p>
+            }
+            else
+            {
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px">
+                    @foreach (var neg in negsCliente)
+                    {
+                        var tp = Store.GetTipoServico(neg.TipoServicoId);
+                        var ultimoOrc = neg.Orcamentos.LastOrDefault();
+                        <div style="background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px">
+                            <div style="display:flex;justify-content:space-between;align-items:center">
+                                <strong>@(tp?.Nome ?? "Projeto Sob Medida")</strong>
+                                <span class='badge @(neg.Estagio == "Ganho" ? "b-ok" : "b-info")'>Estágio: @neg.Estagio</span>
+                            </div>
+
+                            @if (neg.Visitas.Count > 0)
+                            {
+                                var vis = neg.Visitas.Last();
+                                <div style="font-size:12.5px">
+                                    <span class="muted">📐 Medição técnica (@vis.DataRealizada):</span>
+                                    <div>@vis.Medicoes</div>
+                                </div>
+                            }
+
+                            @if (ultimoOrc is not null)
+                            {
+                                <div style="background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12.5px;display:flex;flex-direction:column;gap:4px">
+                                    <div style="display:flex;justify-content:space-between">
+                                        <strong>Orçamento v@(ultimoOrc.Versao)</strong>
+                                        <span class='badge @(ultimoOrc.Status == "aceito" ? "b-ok" : "b-warn")'>@ultimoOrc.Status.ToUpperInvariant()</span>
+                                    </div>
+                                    <div>Valor Total: <strong>@MockErpStore.FormatMoeda(ultimoOrc.Valor)</strong> · Prazo estimado: <b>@ultimoOrc.PrazoExecucaoDias dias</b></div>
+                                    <div class="muted">@ultimoOrc.CondicoesPagamento</div>
+                                    <div>@ultimoOrc.EscopoResumo</div>
+                                    @if (ultimoOrc.Status == "enviado")
+                                    {
+                                        <div class="actions end" style="margin-top:6px">
+                                            <button type="button" class="btn primary" @onclick="() => AprovarOrcamentoPortal(neg, ultimoOrc)">
+                                                ✓ Aprovar Orçamento v@(ultimoOrc.Versao) Online
+                                            </button>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <small class="muted">Aguardando elaboração e envio do orçamento técnico pela equipe Hako.</small>
+                            }
+                        </div>
+                    }
+
+                    @foreach (var ctr in contratosCliente)
+                    {
+                        <div style='background:var(--bg);border:1px solid var(--line);border-left:4px solid @(ctr.Status == "assinado" ? "var(--ok)" : "var(--warn)");border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px'>
+                            <div style="display:flex;justify-content:space-between;align-items:center">
+                                <strong>Contrato #@ctr.Id — @ctr.PdfNome</strong>
+                                <span class='badge @(ctr.Status == "assinado" ? "b-ok" : "b-warn")'>
+                                    @(ctr.Status == "assinado" ? "ASSINADO ✓" : "AGUARDANDO ASSINATURA")
+                                </span>
+                            </div>
+                            <div style="font-size:12.5px" class="muted">
+                                Enviado em: @ctr.EnviadoEm · Assinado em: @ctr.AssinadoEm · Hash: <code>@ctr.HashDoc</code>
+                            </div>
+
+                            <div class="actions" style="flex-wrap:wrap;margin-top:4px">
+                                <button type="button" class="btn" @onclick="() => ContratoVisualizado = (ContratoVisualizado?.Id == ctr.Id ? null : ctr)">
+                                    📄 @(ContratoVisualizado?.Id == ctr.Id ? "Ocultar Minuta" : "Ler Contrato Completo")
+                                </button>
+
+                                @if (ctr.Status is "enviado" or "aguardando")
+                                {
+                                    <button type="button" class="btn primary" @onclick="() => AssinarContratoPortal(ctr)">
+                                        ✍ Assinar Contrato Online (@Store.SignatureProviderAtivo)
+                                    </button>
+                                }
+                            </div>
+
+                            @if (ContratoVisualizado?.Id == ctr.Id)
+                            {
+                                <pre style="background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;font-size:12px;white-space:pre-wrap;font-family:inherit;max-height:240px;overflow-y:auto;margin:6px 0 0">@ctr.TextoRenderizado</pre>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </section>
+
+        <!-- =========================================================
+             2. ACOMPANHAMENTO DO SERVIÇO (KANBAN READ-ONLY + FOTOS)
+             ========================================================= -->
+        <section class="grid-card" style="padding:20px">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+                <div>
+                    <span class="w-label">ETAPA 2 · EXECUÇÃO TRANSPARENTE EM TEMPO REAL</span>
+                    <h2 style="margin:4px 0 0;font-size:18px;font-family:Georgia,serif">2. Acompanhamento do Serviço (Kanban Read-Only & Fotos)</h2>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:11.5px">
+                    <span class="badge b-muted">⚪ A iniciar no prazo</span>
+                    <span class="badge b-ok">🟢 Em dia</span>
+                    <span class="badge b-warn">🟡 Atenção no prazo</span>
+                    <span class="badge b-err">🔴 Atrasada</span>
+                    <span class="badge b-info">🔵 Concluída</span>
+                </div>
+            </div>
+
+            @{
+                var servicosCliente = Store.Servicos.Where(s => s.ClienteId == ClienteAtual.Id).ToList();
+            }
+
+            @if (servicosCliente.Count == 0)
+            {
+                <div class="placeholder" style="padding:36px 20px">
+                    <div class="ph-icon">🛠</div>
+                    <h3 style="margin:0;font-family:Georgia,serif">Serviço ainda não iniciado</h3>
+                    <p>Assim que o orçamento for aprovado e o contrato assinado, o quadro Kanban de etapas e as fotos da execução aparecerão automaticamente aqui.</p>
+                </div>
+            }
+            else
+            {
+                @foreach (var s in servicosCliente)
+                {
+                    var tp = Store.GetTipoServico(s.TipoServicoId);
+                    var pct = Store.GetPctExibidoServico(s);
+                    var saudeSrv = Store.GetSaudeServico(s);
+                    var fotosPortal = s.Anexos.Where(a => a.VisivelPortal && a.Tipo == "foto").ToList();
+
+                    <div style="border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px;background:var(--bg)">
+                        <!-- Header do Serviço + Barra de Progresso -->
+                        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px">
+                            <div>
+                                <div style="display:flex;align-items:center;gap:8px">
+                                    <span class="dot @saudeSrv.DotClass"></span>
+                                    <strong style="font-size:16px">Serviço #@s.Id — @(tp?.Nome ?? "Serviço")</strong>
+                                    <span class='badge @(s.Status == "encerrada" ? "b-ok" : "b-info")'>@Store.GetFaseAtualServico(s)</span>
+                                </div>
+                                <small class="muted">
+                                    Início previsto: @s.DtInicio.ToString("dd/MM/yyyy") · Previsão de Entrega: <b>@s.DtEntrega.ToString("dd/MM/yyyy")</b>
+                                    · Local: @(s.ModoExecucao == "oficina" ? $"Produção na Oficina Hako + Instalação em {s.EnderecoInstalacao}" : s.EnderecoExecucao)
+                                </small>
+                            </div>
+
+                            <div style="min-width:220px;text-align:right">
+                                <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px">
+                                    <span class="muted">Progresso Geral</span>
+                                    <strong class="mono">@pct%</strong>
+                                </div>
+                                <div class="pbar" style="--p:@pct;height:10px"><i></i></div>
+                            </div>
+                        </div>
+
+                        <!-- Quadro Kanban Read-Only (5 Colunas) -->
+                        <div class="board" style="margin-bottom:16px">
+                            @foreach (var col in ColunasKanban)
+                            {
+                                var cardsCol = GetCardsColunaPortal(s, col);
+                                <div class="bcol" style="cursor:default;min-height:190px;min-width:185px">
+                                    <header>
+                                        <span>@col (@MockErpStore.GetPctColuna(col)%)</span>
+                                        <span class="count">@cardsCol.Count</span>
+                                    </header>
+
+                                    @foreach (var e in cardsCol)
+                                    {
+                                        var saude = Store.GetSaudeEtapa(e);
+                                        var filhas = s.Etapas.Where(x => x.ParentId == e.Id).OrderBy(x => x.Ordem).ToList();
+                                        var isSub = e.ParentId != null;
+
+                                        <div class="kcard @saude.CssClass" style="cursor:default"
+                                             title='@(col == "Entregue" && filhas.Count > 0 ? $"Sub-tarefas concluídas: {string.Join(", ", filhas.Select(f => f.Nome))}" : saude.Label)'>
+                                            <div style="display:flex;justify-content:space-between;gap:6px;align-items:flex-start">
+                                                <strong>
+                                                    @if (isSub)
+                                                    {
+                                                        <span class="muted">↳ </span>
+                                                    }
+                                                    @e.Nome
+                                                </strong>
+                                                <span class="mono" style="font-size:11px;font-weight:700">@Store.GetPctEtapa(s, e)%</span>
+                                            </div>
+                                            <small>
+                                                Prazo: @e.DtInicioPrevista.ToString("dd/MM") a @e.DtPrevista.ToString("dd/MM")
+                                                @if (e.DtRealizada.HasValue)
+                                                {
+                                                    <span> · ✓ @e.DtRealizada.Value.ToString("dd/MM")</span>
+                                                }
+                                            </small>
+
+                                            @if (col == "Iniciada" && filhas.Count > 0)
+                                            {
+                                                <div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:4px">
+                                                    <small style="font-weight:600;color:var(--accent)">Sub-tarefas (@filhas.Count):</small>
+                                                    @foreach (var f in filhas)
+                                                    {
+                                                        <div style="font-size:11px;display:flex;justify-content:space-between">
+                                                            <span>• @f.Nome</span>
+                                                            <span class="badge b-muted" style="font-size:10px;padding:1px 6px">@f.Coluna</span>
+                                                        </div>
+                                                    }
+                                                </div>
+                                            }
+
+                                            @if (col == "Entregue" && filhas.Count > 0)
+                                            {
+                                                <details style="margin-top:4px;font-size:11px">
+                                                    <summary style="cursor:pointer;color:var(--accent)">
+                                                        ✓ @filhas.Count sub-tarefas concluídas (ver)
+                                                    </summary>
+                                                    <ul style="margin:4px 0 0;padding-left:16px">
+                                                        @foreach (var f in filhas)
+                                                        {
+                                                            <li>@f.Nome (@(f.DtRealizada?.ToString("dd/MM") ?? "100%"))</li>
+                                                        }
+                                                    </ul>
+                                                </details>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+
+                        <!-- Galeria de Fotos das Etapas (Antes · Em Andamento · Depois) -->
+                        <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px">
+                            <h4 style="margin:0 0 10px;font-size:14px">📷 Registro Fotográfico das Etapas (`Antes · Em Andamento · Depois`)</h4>
+                            @if (fotosPortal.Count == 0)
+                            {
+                                <small class="muted">Nenhuma foto publicada para visualização externa neste serviço ainda.</small>
+                            }
+                            else
+                            {
+                                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+                                    @foreach (var momento in new[] { ("antes", "1. Antes"), ("andamento", "2. Em Andamento"), ("depois", "3. Depois (Finalizado)") })
+                                    {
+                                        var fotosMom = fotosPortal.Where(f => f.Momento == momento.Item1).ToList();
+                                        <div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px">
+                                            <div style="font-size:12px;font-weight:700;margin-bottom:8px;color:var(--muted)">
+                                                @momento.Item2 (@fotosMom.Count)
+                                            </div>
+                                            @if (fotosMom.Count == 0)
+                                            {
+                                                <small class="muted">Sem fotos nesta fase.</small>
+                                            }
+                                            else
+                                            {
+                                                @foreach (var ft in fotosMom)
+                                                {
+                                                    <div style="background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:6px;font-size:12px">
+                                                        <div style="font-weight:600">🖼 @ft.NomeArquivo</div>
+                                                        <small class="muted">Etapa: @ft.EtapaNome · Em @ft.DataUpload</small>
+                                                    </div>
+                                                }
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        </section>
+
+        <!-- =========================================================
+             3. ENTREGA TÉCNICA & GARANTIA PÓS-VENDA (90 DIAS)
+             ========================================================= -->
+        <section class="grid-card" style="padding:20px">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+                <div>
+                    <span class="w-label">ETAPA 3 · PÓS-OBRA E ASSISTÊNCIA</span>
+                    <h2 style="margin:4px 0 0;font-size:18px;font-family:Georgia,serif">
+                        3. Entrega Técnica & Garantia Pós-Venda (@Store.GarantiaPrazoDias dias)
+                    </h2>
+                </div>
+            </div>
+
+            @{
+                var servicosEntreguesOuProntos = Store.Servicos
+                    .Where(s => s.ClienteId == ClienteAtual.Id && (s.Status == "encerrada" || Store.IsProntoParaFinalizar(s)))
+                    .ToList();
+            }
+
+            @if (servicosEntreguesOuProntos.Count == 0)
+            {
+                <p class="muted" style="font-size:13.5px;margin:0">
+                    O Termo de Entrega Técnica e a abertura de chamados de garantia (@Store.GarantiaPrazoDias dias) ficam disponíveis automaticamente assim que todas as etapas do seu serviço forem concluídas e entregues.
+                </p>
+            }
+            else
+            {
+                @foreach (var s in servicosEntreguesOuProntos)
+                {
+                    var tp = Store.GetTipoServico(s.TipoServicoId);
+                    <div style="background:var(--bg);border:1px solid var(--ok);border-radius:12px;padding:16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+                        <div>
+                            <span class="badge b-ok">✓ @(s.Status == "encerrada" ? "SERVIÇO ENTREGUE" : "100% CONCLUÍDO — PRONTO PARA VISTORIA FINAL")</span>
+                            <h4 style="margin:6px 0 2px;font-size:15px">Serviço #@s.Id — @tp?.Nome</h4>
+                            <small class="muted">
+                                Data de Conclusão/Entrega: <b>@((s.DtEntregaEfetiva ?? s.DtEntrega).ToString("dd/MM/yyyy"))</b> · Cobertura de Garantia Hako: <b>@Store.GarantiaPrazoDias dias corridos</b>
+                            </small>
+                        </div>
+                        <div class="actions">
+                            <button type="button" class="btn" @onclick='() => FeedbackPortal = $"Termo_Entrega_Servico_{s.Id}_{ClienteAtual.Nome.Replace(" ", "")}.pdf baixado com sucesso!"'>
+                                📥 Baixar Termo de Entrega (PDF)
+                            </button>
+                            <button type="button" class="btn primary" @onclick="() => ShowGarantiaForm = !ShowGarantiaForm">
+                                🛠 Abrir Chamado de Garantia (@Store.GarantiaPrazoDias dias)
+                            </button>
+                        </div>
+                    </div>
+                }
+
+                @if (ShowGarantiaForm)
+                {
+                    <div style="background:var(--card);border:1px solid var(--accent);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px">
+                        <h4 style="margin:0;font-size:14.5px">🛠 Novo Chamado de Garantia / Assistência Pós-Obra</h4>
+                        <small class="muted">Sua solicitação é registrada diretamente na linha do tempo e na caixa de mensagens CRM da equipe Hako.</small>
+
+                        <div class="fld-row">
+                            <label class="fld">
+                                Ambiente / Item
+                                <input @bind="GarantiaAmbiente" placeholder="Ex.: Dobradiça da porta da ilha gourmet / Rejunte box" />
+                            </label>
+                            <label class="fld">
+                                Urgência
+                                <select @bind="GarantiaUrgencia">
+                                    <option value="Normal">Normal (Agendar visita em até 5 dias úteis)</option>
+                                    <option value="Alta">Alta (Vazamento / Bloqueio de uso)</option>
+                                </select>
+                            </label>
+                        </div>
+
+                        <label class="fld">
+                            Descrição detalhada da solicitação *
+                            <textarea rows="3" @bind="GarantiaDescricao" placeholder="Descreva o ajuste necessário e os melhores dias/horários para visita técnica..."></textarea>
+                        </label>
+
+                        <div class="actions end">
+                            <button type="button" class="btn" @onclick="() => ShowGarantiaForm = false">Cancelar</button>
+                            <button type="button" class="btn primary" @onclick="EnviarChamadoGarantia">
+                                Enviar Chamado de Garantia
+                            </button>
+                        </div>
+                    </div>
+                }
+            }
+        </section>
+    </main>
+</div>
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+
+    private static readonly string[] ColunasKanban = ["A iniciar", "Iniciada", "Em andamento", "Finalizada", "Entregue"];
+
+    private ContratoEmitidoItem? ContratoVisualizado;
+    private bool ShowGarantiaForm;
+    private string GarantiaAmbiente = "";
+    private string GarantiaUrgencia = "Normal";
+    private string GarantiaDescricao = "";
+    private string FeedbackPortal = "";
+
+    private ClienteItem ClienteAtual =>
+        Store.Clientes.FirstOrDefault(c => string.Equals(c.PortalToken, Token, StringComparison.OrdinalIgnoreCase))
+        ?? Store.Clientes.First();
+
+    private void TrocarClienteDemo(ChangeEventArgs e)
+    {
+        var novoToken = e.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(novoToken))
+        {
+            ShowGarantiaForm = false;
+            ContratoVisualizado = null;
+            FeedbackPortal = "";
+            Nav.NavigateTo($"obra/{novoToken}");
+        }
+    }
+
+    private static List<ServicoEtapaItem> GetCardsColunaPortal(ServicoItem s, string coluna)
+    {
+        // Na coluna Entregue, sub-tarefas ficam recolhidas dentro da tarefa pai
+        if (coluna == "Entregue")
+            return s.Etapas.Where(e => e.ParentId == null && e.Coluna == "Entregue").OrderBy(e => e.Ordem).ToList();
+
+        // Na coluna Iniciada, filhas que já avançaram para Em andamento/Finalizada aparecem nas respectivas colunas
+        return s.Etapas
+            .Where(e => e.Coluna == coluna && !(e.ParentId != null && coluna == "Iniciada"))
+            .OrderBy(e => e.ParentId ?? e.Id)
+            .ThenBy(e => e.Ordem)
+            .ToList();
+    }
+
+    private void AprovarOrcamentoPortal(NegociacaoItem neg, OrcamentoItem orc)
+    {
+        orc.Status = "aceito";
+        orc.RespondidoEm = "30/10/2026";
+        ClienteAtual.Timeline.Add(new("30/10/2026 14:00", "Portal do Cliente", $"Cliente aprovou online o Orçamento v{orc.Versao} ({MockErpStore.FormatMoeda(orc.Valor)}) pelo link /obra/{ClienteAtual.PortalToken}"));
+        ClienteAtual.Mensagens.Add(new("30/10/2026 14:00", "Portal do Cliente", $"Orçamento v{orc.Versao} aprovado online pelo cliente."));
+        FeedbackPortal = $"Orçamento v{orc.Versao} aprovado com sucesso! Nossa equipe já foi notificada para liberar seu contrato.";
+        Store.NotifyStateChanged();
+    }
+
+    private void AssinarContratoPortal(ContratoEmitidoItem ctr)
+    {
+        ctr.Status = "assinado";
+        ctr.AssinadoEm = "30/10/2026 14:15";
+        ClienteAtual.IsLead = false;
+
+        ClienteAtual.Timeline.Add(new("30/10/2026 14:15", "Portal do Cliente", $"Contrato #{ctr.Id} ASSINADO digitalmente pelo cliente via Portal (/obra/{ClienteAtual.PortalToken})"));
+        ClienteAtual.Mensagens.Add(new("30/10/2026 14:15", "Portal do Cliente", $"Assinatura digital confirmada no Contrato #{ctr.Id} ({ctr.HashDoc})."));
+
+        FeedbackPortal = $"Contrato #{ctr.Id} assinado com sucesso! Registro gravado na timeline com hash {ctr.HashDoc}.";
+        Store.NotifyStateChanged();
+    }
+
+    private void EnviarChamadoGarantia()
+    {
+        if (string.IsNullOrWhiteSpace(GarantiaDescricao))
+            return;
+
+        var resumo = $"[GARANTIA {GarantiaUrgencia.ToUpperInvariant()}] {(string.IsNullOrWhiteSpace(GarantiaAmbiente) ? "Geral" : GarantiaAmbiente.Trim())}: {GarantiaDescricao.Trim()}";
+        ClienteAtual.Timeline.Add(new("30/10/2026 15:00", "Portal do Cliente (Garantia)", resumo));
+        ClienteAtual.Mensagens.Add(new("30/10/2026 15:00", "Chamado de Garantia (Portal)", resumo));
+
+        GarantiaAmbiente = "";
+        GarantiaDescricao = "";
+        ShowGarantiaForm = false;
+        FeedbackPortal = "Chamado de garantia registrado com sucesso! Nossa equipe técnica recebeu sua solicitação no CRM.";
+        Store.NotifyStateChanged();
+    }
+}

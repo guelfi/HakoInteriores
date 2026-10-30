@@ -1,11 +1,44 @@
+@inject MockErpStore Store
+@inject NavigationManager Nav
+
 <div class="toolbar">
-    <div class="actions">
-        <button class="btn primary" @onclick="Novo">+ Novo cliente</button>
+    <div class="actions" style="flex-wrap:wrap;align-items:center;gap:8px">
+        @if (Store.HasPerm("clientes.edit"))
+        {
+            <button class="btn primary" @onclick="Novo">+ Novo cliente / lead</button>
+        }
+        <input class="flt-inp" placeholder="🔍 Buscar nome, celular ou email..." @bind="Busca" @bind:event="oninput" style="min-width:210px" />
+        <select class="flt-sel" @bind="FiltroTipo">
+            <option value="todos">Tipo: Todos</option>
+            <option value="leads">Só Leads</option>
+            <option value="clientes">Só Clientes</option>
+        </select>
+        <select class="flt-sel" @bind="FiltroStatus">
+            <option value="todos">Status: Todos</option>
+            <option value="ativo">Ativo</option>
+            <option value="inativo">Inativo</option>
+            <option value="suspenso">Suspenso</option>
+            <option value="cancelado">Cancelado</option>
+        </select>
+        <select class="flt-sel" @bind="FiltroOrigem">
+            <option value="todas">Origem: Todas</option>
+            <option value="lp">Landing Page (LP)</option>
+            <option value="instagram">Instagram</option>
+            <option value="indicacao">Indicação</option>
+            <option value="parceiro">Parceiro (Arq/Eng)</option>
+            <option value="outro">Outro</option>
+        </select>
+        <label class="flt-chk">
+            <input type="checkbox" @bind="FiltroComServicoAndamento" /> Com serviço em andamento
+        </label>
+        <label class="flt-chk">
+            <input type="checkbox" @bind="FiltroComEtapaAtrasada" /> Com etapa atrasada
+        </label>
     </div>
     <div class="pager">
         <button @onclick="() => Page = 0" disabled="@(Page == 0)" title="Início">⏮</button>
         <button @onclick="() => Page--" disabled="@(Page == 0)" title="Anterior">◀</button>
-        <span>@(Page + 1) / @Pages</span>
+        <span>@(Page + 1) / @Pages (@FilteredRows.Count)</span>
         <button @onclick="() => Page++" disabled="@(Page >= Pages - 1)" title="Próximo">▶</button>
         <button @onclick="() => Page = Pages - 1" disabled="@(Page >= Pages - 1)" title="Fim">⏭</button>
     </div>
@@ -14,92 +47,1149 @@
 <div class="grid-card">
     <table class="grid">
         <thead>
-            <tr><th>Status</th><th>Obras</th><th>Nome</th><th class="hide-m">Celular</th></tr>
+            <tr>
+                <th>Status</th>
+                <th>Serviços</th>
+                <th>Nome</th>
+                <th class="hide-m">Celular (Contato Direto)</th>
+                <th class="hide-m">Origem</th>
+            </tr>
         </thead>
         <tbody>
-            @foreach (var c in Rows.Skip(Page * Size).Take(Size))
+            @foreach (var c in FilteredRows.Skip(Page * Size).Take(Size))
             {
-                <tr @onclick="() => Editar(c)">
+                var servs = Store.Servicos.Where(s => s.ClienteId == c.Id).ToList();
+                var temAtraso = servs.Any(s => Store.GetSaudeServico(s).DotClass == "s-err");
+                var negCount = Store.Negociacoes.Count(n => n.ClienteId == c.Id);
+                <tr @onclick="() => AbrirModal(c)">
                     <td>
                         <span class="badge @(c.IsLead ? "b-lead" : "b-cliente")">@(c.IsLead ? "Lead" : "Cliente")</span>
-                        <i class="dot @(c.Ativo ? "on" : "off")" title="@(c.Ativo ? "Ativo" : "Inativo")"></i>
+                        <i class="dot @GetStatusDot(c.Status)" title="Status: @c.Status"></i>
+                        @if (c.Status != "ativo")
+                        {
+                            <span class="badge @GetStatusBadge(c.Status)" style="margin-left:4px">@c.Status</span>
+                        }
                     </td>
                     <td>
-                        @if (c.Obras == 0)
+                        @if (servs.Count == 0)
                         {
-                            <span class="muted">—</span>
+                            <span class="muted" title="@($"{negCount} negociação(ões) no funil")">— <small>(@negCount neg.)</small></span>
                         }
                         else
                         {
-                            <span class="obra-ico" title="@c.ObraDesc">@c.ObraIcon @(c.Obras > 1 ? $"×{c.Obras}" : "")</span>
-                            @if (c.Atrasada) { <span class="badge b-err" title="Etapa em atraso">atraso</span> }
+                            var icon = servs.Any(s => s.Status == "andamento") ? "🛠"
+                                     : servs.Any(s => s.Status == "suspenso") ? "⏸"
+                                     : servs.All(s => s.Status == "encerrada") ? "✓" : "✗";
+                            var desc = string.Join(" · ", servs.Select(s => $"{Store.GetTipoServico(s.TipoServicoId)?.Nome} ({s.Status})"));
+                            <span class="obra-ico" title="@desc">@icon @(servs.Count > 1 ? $"×{servs.Count}" : "×1")</span>
+                            @if (temAtraso)
+                            {
+                                <span class="badge b-err" title="Possui etapa em atraso no Kanban">atraso</span>
+                            }
                         }
                     </td>
-                    <td>@c.Nome</td>
+                    <td>
+                        <strong>@c.Nome</strong>
+                        @if (!string.IsNullOrWhiteSpace(c.Email))
+                        {
+                            <div class="muted" style="font-size:11.5px">@c.Email @(string.IsNullOrWhiteSpace(c.Bairro) ? "" : $"· {c.Bairro}/{c.Uf}")</div>
+                        }
+                    </td>
                     <td class="mono hide-m">@c.Celular</td>
+                    <td class="hide-m"><span class="badge b-muted">@FormatOrigem(c.Origem)</span></td>
+                </tr>
+            }
+            @if (FilteredRows.Count == 0)
+            {
+                <tr>
+                    <td colspan="5" style="text-align:center;padding:28px" class="muted">Nenhum cliente ou lead encontrado para os filtros aplicados.</td>
                 </tr>
             }
         </tbody>
     </table>
 </div>
 
-@if (Form is not null)
+@if (ModalCli is not null)
 {
     <div class="modal-back" @onclick="Fechar">
-        <div class="modal" @onclick:stopPropagation>
-            <h3>@(IsNew ? "Novo cliente" : "Cliente")</h3>
-            <label class="fld">Nome completo<input @bind="Form.Nome"></label>
-            <label class="fld">Celular<input @bind="Form.Celular" placeholder="(11) 9xxxx-xxxx"></label>
-            <label class="fld">Tipo
-                <select @bind="Form.IsLead"><option value="false">Cliente</option><option value="true">Lead</option></select>
-            </label>
-            <label class="fld chk"><input type="checkbox" @bind="Form.Ativo"> Ativo</label>
-            <div class="actions end">
-                <button class="btn" @onclick="Fechar">Cancelar</button>
-                @if (!IsNew) { <button class="btn danger" @onclick="Inativar">Inativar</button> }
-                <button class="btn primary" @onclick="Salvar">Salvar</button>
+        <div class="modal modal-lg" @onclick:stopPropagation>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:1px solid var(--line);padding-bottom:10px">
+                <div>
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <h3 style="margin:0">@(IsNew ? "Novo Cadastro (Lead → Contato)" : ModalCli.Nome)</h3>
+                        <span class="badge @(ModalCli.IsLead ? "b-lead" : "b-cliente")">
+                            @(ModalCli.IsLead ? "LEAD (Sem contrato assinado)" : "★ CLIENTE (Contrato assinado)")
+                        </span>
+                        <span class="badge @GetStatusBadge(ModalCli.Status)">Status: @ModalCli.Status.ToUpper()</span>
+                    </div>
+                    <small class="muted">
+                        @(ModalCli.IsLead
+                            ? "Regra de domínio: Leads só se tornam Clientes quando uma negociação chega em Ganho com contrato assinado."
+                            : $"Cliente ativo na base Hako · ID #{ModalCli.Id}")
+                    </small>
+                </div>
+                <button class="btn" @onclick="Fechar">✕</button>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(FeedbackMsg))
+            {
+                <div class="alert-box @(FeedbackErro ? "err" : "ok")">@FeedbackMsg</div>
+            }
+
+            @if (!IsNew)
+            {
+                <div class="tabs" style="margin-bottom:6px;flex-wrap:wrap">
+                    @if (Store.HasPerm("clientes.view"))
+                    {
+                        <button class="tab @(ActiveTab == 1 ? "on" : "")" @onclick="() => ActiveTab = 1">1. Dados Pessoais</button>
+                        <button class="tab @(ActiveTab == 2 ? "on" : "")" @onclick="() => ActiveTab = 2">2. Documentos/Contrato</button>
+                    }
+                    @if (Store.HasPerm("funil.view") || Store.HasPerm("clientes.view"))
+                    {
+                        <button class="tab @(ActiveTab == 3 ? "on" : "")" @onclick="() => ActiveTab = 3">3. Negociações &amp; Orçamentos</button>
+                    }
+                    @if (Store.HasPerm("servicos.view"))
+                    {
+                        <button class="tab @(ActiveTab == 4 ? "on" : "")" @onclick="() => ActiveTab = 4">4. Serviços (@Store.Servicos.Count(s => s.ClienteId == ModalCli.Id))</button>
+                    }
+                    @if (Store.HasPerm("clientes.view"))
+                    {
+                        <button class="tab @(ActiveTab == 5 ? "on" : "")" @onclick="() => ActiveTab = 5">5. Portal</button>
+                    }
+                    @if (Store.HasPerm("contratos.view"))
+                    {
+                        <button class="tab @(ActiveTab == 6 ? "on" : "")" @onclick="() => ActiveTab = 6">6. Contratos (@Store.ContratosEmitidos.Count(x => x.ClienteId == ModalCli.Id))</button>
+                    }
+                    @if (Store.HasPerm("financeiro.view"))
+                    {
+                        <button class="tab @(ActiveTab == 7 ? "on" : "")" @onclick="() => ActiveTab = 7">7. Financeiro</button>
+                    }
+                    @if (Store.HasPerm("clientes.view"))
+                    {
+                        <button class="tab @(ActiveTab == 8 ? "on" : "")" @onclick="() => ActiveTab = 8">8. Mensagens (@ModalCli.Mensagens.Count)</button>
+                    }
+                </div>
+            }
+
+            <div class="modal-body-scroll">
+                @* ==================== ABA 1: DADOS PESSOAIS ==================== *@
+                @if (ActiveTab == 1 || IsNew)
+                {
+                    var canEdit = Store.HasPerm("clientes.edit");
+                    <div class="fld-row">
+                        <label class="fld">Nome Completo *
+                            <input @bind="ModalCli.Nome" disabled="@(!canEdit)" placeholder="Ex.: Mariana Costa" />
+                        </label>
+                        <label class="fld">Celular / WhatsApp * (Contato Direto)
+                            <input @bind="ModalCli.Celular" disabled="@(!canEdit)" placeholder="(11) 9xxxx-xxxx" />
+                        </label>
+                    </div>
+                    <div class="fld-row">
+                        <label class="fld">Telefone 2 (Opcional)
+                            <input @bind="ModalCli.Tel2" disabled="@(!canEdit)" placeholder="(11) 3xxx-xxxx" />
+                        </label>
+                        <label class="fld">E-mail
+                            <input @bind="ModalCli.Email" disabled="@(!canEdit)" placeholder="cliente@email.com" />
+                        </label>
+                    </div>
+
+                    <div class="sec-divider">Endereço Completo (Base para Visita, Obra e Contrato)</div>
+                    <div class="fld-row" style="grid-template-columns: 2fr 1fr 1fr">
+                        <label class="fld">Rua / Logradouro
+                            <input @bind="ModalCli.Rua" disabled="@(!canEdit)" />
+                        </label>
+                        <label class="fld">Número
+                            <input @bind="ModalCli.Numero" disabled="@(!canEdit)" />
+                        </label>
+                        <label class="fld">Complemento
+                            <input @bind="ModalCli.Complemento" disabled="@(!canEdit)" placeholder="Apto / Bloco" />
+                        </label>
+                    </div>
+                    <div class="fld-row" style="grid-template-columns: 1.3fr 1.3fr 0.6fr 1fr">
+                        <label class="fld">Bairro
+                            <input @bind="ModalCli.Bairro" disabled="@(!canEdit)" />
+                        </label>
+                        <label class="fld">Cidade
+                            <input @bind="ModalCli.Cidade" disabled="@(!canEdit)" />
+                        </label>
+                        <label class="fld">UF
+                            <input @bind="ModalCli.Uf" disabled="@(!canEdit)" maxlength="2" />
+                        </label>
+                        <label class="fld">CEP
+                            <input @bind="ModalCli.Cep" disabled="@(!canEdit)" placeholder="00000-000" />
+                        </label>
+                    </div>
+
+                    <div class="fld-row">
+                        <label class="fld">Origem do Contato
+                            <select @bind="ModalCli.Origem" disabled="@(!canEdit)">
+                                <option value="lp">Landing Page (LP)</option>
+                                <option value="instagram">Instagram</option>
+                                <option value="indicacao">Indicação de Cliente</option>
+                                <option value="parceiro">Parceiro (Arquiteto / Engenheiro)</option>
+                                <option value="outro">Outro</option>
+                            </select>
+                        </label>
+                        <label class="fld">Status Cadastral
+                            <select @bind="NovoStatusTemp" disabled="@(!canEdit || IsNew)">
+                                <option value="ativo">Ativo</option>
+                                <option value="inativo">Inativo</option>
+                                <option value="suspenso">Suspenso (Cascateia para Serviços Ativos!)</option>
+                                <option value="cancelado">Cancelado</option>
+                            </select>
+                        </label>
+                    </div>
+
+                    @if (!IsNew && NovoStatusTemp != "ativo")
+                    {
+                        <div class="warn-panel">
+                            <label class="fld">Motivo Obrigatório para alterar status para "@NovoStatusTemp.ToUpper()" *
+                                <input @bind="ModalCli.MotivoStatus" placeholder="Descreva o motivo (ex.: Inadimplência contratual / Solicitação do cliente)" />
+                            </label>
+                            @if (NovoStatusTemp == "suspenso")
+                            {
+                                <small style="color:var(--err);font-weight:600">
+                                    ⚠ Atenção: Suspender este cliente colocará automaticamente todos os seus Serviços em andamento no status SUSPENSO (bloqueando o Kanban e congelando o SLA).
+                                </small>
+                            }
+                        </div>
+                    }
+
+                    @if (IsNew)
+                    {
+                        <div class="sec-divider">1ª Negociação Automática (Inicia em "Contato" no Funil)</div>
+                        <div class="fld-row">
+                            <label class="fld">Tipo de Serviço Desejado *
+                                <select @bind="NovoLeadTipoServicoId">
+                                    @foreach (var ts in Store.TiposServico.Where(t => t.Ativo))
+                                    {
+                                        <option value="@ts.Id">@ts.Nome (@ts.Categoria)</option>
+                                    }
+                                </select>
+                            </label>
+                            <label class="fld">Valor Estimado Inicial (R$)
+                                <input type="number" @bind="NovoLeadValorReais" placeholder="Ex.: 35000" />
+                            </label>
+                        </div>
+                    }
+
+                    <label class="fld">Observações Gerais
+                        <textarea rows="2" @bind="ModalCli.Observacoes" disabled="@(!canEdit)" placeholder="Restrições de horário de condomínio, perfil do cliente, indicação..."></textarea>
+                    </label>
+
+                    @if (canEdit)
+                    {
+                        <div class="actions end" style="margin-top:8px">
+                            <button class="btn" @onclick="Fechar">Cancelar</button>
+                            <button class="btn primary" @onclick="SalvarDadosPessoais">
+                                @(IsNew ? "Criar Lead + Card em 'Contato'" : "Salvar Dados Pessoais")
+                            </button>
+                        </div>
+                    }
+                }
+
+                @* ==================== ABA 2: DOCUMENTOS / CONTRATO ==================== *@
+                else if (ActiveTab == 2)
+                {
+                    var canEdit = Store.HasPerm("clientes.edit");
+                    <div class="hint-banner">
+                        📄 Estes dados alimentam automaticamente as variáveis <code>{{cliente.cpf_cnpj}}</code>, <code>{{cliente.rg}}</code>, <code>{{cliente.estado_civil}}</code> e <code>{{cliente.profissao}}</code> na emissão do Contrato.
+                    </div>
+                    <div class="fld-row" style="grid-template-columns: 1.2fr 1fr 0.8fr">
+                        <label class="fld">CPF ou CNPJ * (Obrigatório p/ Contrato)
+                            <input @bind="ModalCli.CpfCnpj" disabled="@(!canEdit)" placeholder="000.000.000-00" />
+                        </label>
+                        <label class="fld">RG / Inscrição Estadual
+                            <input @bind="ModalCli.Rg" disabled="@(!canEdit)" placeholder="00.000.000-X" />
+                        </label>
+                        <label class="fld">Órgão Emissor
+                            <input @bind="ModalCli.OrgaoEmissor" disabled="@(!canEdit)" placeholder="SSP/SP" />
+                        </label>
+                    </div>
+                    <div class="fld-row" style="grid-template-columns: 1fr 1fr 1fr">
+                        <label class="fld">Estado Civil
+                            <select @bind="ModalCli.EstadoCivil" disabled="@(!canEdit)">
+                                <option value="">Selecione...</option>
+                                <option value="Solteiro(a)">Solteiro(a)</option>
+                                <option value="Casado(a)">Casado(a)</option>
+                                <option value="União Estável">União Estável</option>
+                                <option value="Divorciado(a)">Divorciado(a)</option>
+                                <option value="Viúvo(a)">Viúvo(a)</option>
+                            </select>
+                        </label>
+                        <label class="fld">Profissão
+                            <input @bind="ModalCli.Profissao" disabled="@(!canEdit)" placeholder="Ex.: Médica, Empresário..." />
+                        </label>
+                        <label class="fld">Nacionalidade
+                            <input @bind="ModalCli.Nacionalidade" disabled="@(!canEdit)" placeholder="Brasileira" />
+                        </label>
+                    </div>
+                    @if (canEdit)
+                    {
+                        <div class="actions end" style="margin-top:8px">
+                            <button class="btn primary" @onclick="SalvarDocumentos">Salvar Qualificação Contratual</button>
+                        </div>
+                    }
+                }
+
+                @* ==================== ABA 3: NEGOCIAÇÕES, MEDIÇÕES E ORÇAMENTOS ==================== *@
+                else if (ActiveTab == 3)
+                {
+                    var negs = Store.Negociacoes.Where(n => n.ClienteId == ModalCli.Id).OrderByDescending(n => n.Id).ToList();
+                    var selNeg = negs.FirstOrDefault(n => n.Id == SelectedNegId) ?? negs.FirstOrDefault();
+                    if (selNeg is not null) SelectedNegId = selNeg.Id;
+
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                            <strong style="font-size:13px">Negociações desta pessoa (@negs.Count):</strong>
+                            @foreach (var n in negs)
+                            {
+                                var ts = Store.GetTipoServico(n.TipoServicoId);
+                                <button class="btn @(SelectedNegId == n.Id ? "primary" : "")" @onclick="() => SelectedNegId = n.Id" style="padding:5px 10px;font-size:12px">
+                                    #@n.Id · @(ts?.Nome ?? "Serviço") [@n.Estagio]
+                                </button>
+                            }
+                        </div>
+                        @if (Store.HasPerm("funil.edit"))
+                        {
+                            <button class="btn primary" @onclick="() => ShowNovaNegForm = !ShowNovaNegForm">+ Nova Negociação (Novo Serviço)</button>
+                        }
+                    </div>
+
+                    @if (ShowNovaNegForm)
+                    {
+                        <div class="sub-box">
+                            <h4 style="margin:0 0 8px">Abrir Nova Negociação (Card inicia em "Contato")</h4>
+                            <div class="fld-row">
+                                <label class="fld">Tipo de Serviço
+                                    <select @bind="NovaNegTipoServicoId">
+                                        @foreach (var ts in Store.TiposServico.Where(t => t.Ativo))
+                                        {
+                                            <option value="@ts.Id">@ts.Nome (@ts.Categoria)</option>
+                                        }
+                                    </select>
+                                </label>
+                                <label class="fld">Valor Estimado (R$)
+                                    <input type="number" @bind="NovaNegValorReais" />
+                                </label>
+                            </div>
+                            <div class="actions end" style="margin-top:8px">
+                                <button class="btn" @onclick="() => ShowNovaNegForm = false">Cancelar</button>
+                                <button class="btn primary" @onclick="CriarNovaNegociacaoAba3">Criar Card em "Contato"</button>
+                            </div>
+                        </div>
+                    }
+
+                    @if (selNeg is not null)
+                    {
+                        var tsNeg = Store.GetTipoServico(selNeg.TipoServicoId);
+                        <div class="sub-box" style="background:var(--card)">
+                            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+                                <div>
+                                    <span class="badge @(ModalCli.IsLead ? "b-lead" : "b-cliente")">
+                                        @(ModalCli.IsLead ? "Lead → 1º contrato" : "★ Cliente → novo contrato")
+                                    </span>
+                                    <strong style="margin-left:6px">Negociação #@selNeg.Id — @(tsNeg?.Nome)</strong>
+                                    <span class="badge b-info" style="margin-left:6px">Estágio: @selNeg.Estagio</span>
+                                </div>
+                                <div style="display:flex;gap:8px;align-items:center">
+                                    <span class="mono">Estimado: <strong>@MockErpStore.FormatMoeda(selNeg.ValorEstimado)</strong></span>
+                                    <button class="btn" style="padding:4px 9px;font-size:12px" @onclick="IrParaFunil">Ver no Funil →</button>
+                                </div>
+                            </div>
+
+                            @* --- Seção 3A: Visitas e Medições --- *@
+                            <div class="sec-divider" style="display:flex;justify-content:space-between;align-items:center">
+                                <span>📐 Visitas Técnicas e Medições (Alimenta <code>{{medicao.*}}</code> no Contrato)</span>
+                                @if (Store.HasPerm("funil.edit"))
+                                {
+                                    <button class="btn" style="padding:4px 10px;font-size:12px" @onclick="() => ShowFormVisita = !ShowFormVisita">
+                                        + Agendar / Registrar Medição
+                                    </button>
+                                }
+                            </div>
+
+                            @if (ShowFormVisita)
+                            {
+                                <div class="sub-box">
+                                    <div class="fld-row">
+                                        <label class="fld">Data/Hora da Visita
+                                            <input @bind="NovaVisitaData" placeholder="30/10/2026 14:30" />
+                                        </label>
+                                        <label class="fld">Status da Visita
+                                            <select @bind="NovaVisitaStatus">
+                                                <option value="realizada">Realizada (com medições)</option>
+                                                <option value="agendada">Agendada</option>
+                                            </select>
+                                        </label>
+                                    </div>
+                                    <label class="fld">Medições Detalhadas dos Ambientes (vai para o Contrato!) *
+                                        <textarea rows="2" @bind="NovaVisitaMedicoes" placeholder="Ex.: Parede pia 3,40m x 2,65m | Ilha 1,80m x 0,90m | MDF Louro Freijó..."></textarea>
+                                    </label>
+                                    <label class="fld">Observações Técnicas de Campo
+                                        <input @bind="NovaVisitaObs" placeholder="Pontos de água/gás, acesso escada/elevador..." />
+                                    </label>
+                                    <div class="actions end" style="margin-top:6px">
+                                        <button class="btn" @onclick="() => ShowFormVisita = false">Cancelar</button>
+                                        <button class="btn primary" @onclick="() => SalvarVisita(selNeg)">Salvar Visita / Medições</button>
+                                    </div>
+                                </div>
+                            }
+
+                            @if (selNeg.Visitas.Count == 0)
+                            {
+                                <p class="muted" style="margin:6px 0">Nenhuma visita ou medição registrada para esta negociação.</p>
+                            }
+                            else
+                            {
+                                @foreach (var v in selNeg.Visitas)
+                                {
+                                    <div class="item-row">
+                                        <div>
+                                            <span class="badge @(v.Status == "realizada" ? "b-ok" : "b-warn")">@v.Status.ToUpper()</span>
+                                            <strong class="mono" style="margin-left:6px">@(string.IsNullOrWhiteSpace(v.DataRealizada) ? v.DataAgendada : v.DataRealizada)</strong>
+                                            <div style="margin-top:4px;font-size:12.5px"><strong>Medições:</strong> @(string.IsNullOrWhiteSpace(v.Medicoes) ? "Aguardando levantamento em campo" : v.Medicoes)</div>
+                                            @if (!string.IsNullOrWhiteSpace(v.Observacoes))
+                                            {
+                                                <div class="muted" style="font-size:12px">Obs: @v.Observacoes</div>
+                                            }
+                                        </div>
+                                        @if (v.Status != "realizada" && Store.HasPerm("funil.edit"))
+                                        {
+                                            <button class="btn primary" style="padding:4px 9px;font-size:12px" @onclick="() => MarcarVisitaRealizada(selNeg, v)">✓ Registrar Medições</button>
+                                        }
+                                    </div>
+                                }
+                            }
+
+                            @* --- Seção 3B: Orçamentos Enviados --- *@
+                            <div class="sec-divider" style="display:flex;justify-content:space-between;align-items:center;margin-top:14px">
+                                <span>💰 Orçamentos e Propostas (Alimenta <code>{{orcamento.*}}</code> no Contrato)</span>
+                                @if (Store.HasPerm("funil.edit"))
+                                {
+                                    <button class="btn" style="padding:4px 10px;font-size:12px" @onclick="() => AbrirFormOrcamento(selNeg)">
+                                        + Novo / Enviar Orçamento (v@(selNeg.Orcamentos.Count + 1))
+                                    </button>
+                                }
+                            </div>
+
+                            @if (ShowFormOrcamento)
+                            {
+                                <div class="sub-box">
+                                    <div class="fld-row" style="grid-template-columns: 1fr 1fr 1.2fr">
+                                        <label class="fld">Valor Total (R$) *
+                                            <input type="number" @bind="NovoOrcValorReais" />
+                                        </label>
+                                        <label class="fld">Prazo de Execução (Dias) *
+                                            <input type="number" @bind="NovoOrcPrazoDias" />
+                                        </label>
+                                        <label class="fld">Arquivo PDF da Proposta
+                                            <input @bind="NovoOrcPdf" placeholder="Orcamento_v1.pdf" />
+                                        </label>
+                                    </div>
+                                    <label class="fld">Condições de Pagamento * (vai para Cláusula de Preço do Contrato)
+                                        <input @bind="NovoOrcCondicoes" placeholder="Ex.: 30% de sinal na assinatura + 3x mensais no PIX/Boleto" />
+                                    </label>
+                                    <label class="fld">Resumo do Escopo Técnico * (vai para Cláusula de Objeto do Contrato)
+                                        <textarea rows="2" @bind="NovoOrcEscopo" placeholder="Descreva os itens inclusos no orçamento..."></textarea>
+                                    </label>
+                                    <div class="actions end" style="margin-top:6px">
+                                        <button class="btn" @onclick="() => ShowFormOrcamento = false">Cancelar</button>
+                                        <button class="btn primary" @onclick="() => SalvarOrcamento(selNeg)">Registrar &amp; Enviar Orçamento</button>
+                                    </div>
+                                </div>
+                            }
+
+                            @if (selNeg.Orcamentos.Count == 0)
+                            {
+                                <p class="muted" style="margin:6px 0">Nenhum orçamento emitido ainda para esta negociação.</p>
+                            }
+                            else
+                            {
+                                @foreach (var o in selNeg.Orcamentos.OrderByDescending(x => x.Versao))
+                                {
+                                    <div class="item-row">
+                                        <div style="flex:1">
+                                            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                                                <span class="badge @GetOrcStatusBadge(o.Status)">v@(o.Versao) · @o.Status.ToUpper()</span>
+                                                <strong class="mono">@MockErpStore.FormatMoeda(o.Valor)</strong>
+                                                <span class="muted" style="font-size:12px">Prazo: @o.PrazoExecucaoDias dias · PDF: @o.ArquivoPdf</span>
+                                            </div>
+                                            <div style="font-size:12.5px;margin-top:3px"><strong>Pagamento:</strong> @o.CondicoesPagamento</div>
+                                            <div class="muted" style="font-size:12px"><strong>Escopo:</strong> @o.EscopoResumo</div>
+                                        </div>
+                                        @if (Store.HasPerm("funil.edit") && o.Status is "enviado" or "rascunho")
+                                        {
+                                            <div style="display:flex;gap:6px;flex-wrap:wrap">
+                                                <button class="btn primary" style="padding:4px 9px;font-size:11.5px" @onclick="() => AprovarOrcamentoAba3(selNeg, o)">
+                                                    ✓ Marcar Aprovado (Aceito)
+                                                </button>
+                                                <button class="btn danger" style="padding:4px 9px;font-size:11.5px" @onclick="() => RecusarOrcamentoAba3(selNeg, o)">
+                                                    ✗ Recusar
+                                                </button>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            }
+                        </div>
+                    }
+
+                    @* --- Seção 3C: Timeline Completa de Auditoria --- *@
+                    <div class="sec-divider" style="margin-top:16px">🕒 Linha do Tempo Auditável (Histórico Completo do Cliente)</div>
+                    <div class="timeline-list">
+                        @foreach (var ev in ModalCli.Timeline.AsEnumerable().Reverse())
+                        {
+                            <div class="tl-item">
+                                <span class="mono muted" style="min-width:118px;font-size:11.5px">@ev.Quando</span>
+                                <span class="badge b-muted" style="font-size:10.5px">@ev.Usuario</span>
+                                <span style="font-size:12.5px">@ev.Descricao</span>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @* ==================== ABA 4: SERVIÇOS ==================== *@
+                else if (ActiveTab == 4)
+                {
+                    var servs = Store.Servicos.Where(s => s.ClienteId == ModalCli.Id).ToList();
+                    @if (servs.Count == 0)
+                    {
+                        <div class="placeholder" style="padding:32px">
+                            <p>Nenhum serviço contratado ainda. O Serviço é criado automaticamente quando uma negociação atinge <strong>Ganho</strong> com contrato assinado.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <table class="grid">
+                            <thead>
+                                <tr>
+                                    <th>Saúde</th>
+                                    <th>Serviço / Tipo</th>
+                                    <th>Execução</th>
+                                    <th>Fase Atual</th>
+                                    <th>Avanço</th>
+                                    <th>Entrega Prevista</th>
+                                    <th>Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var s in servs)
+                                {
+                                    var saude = Store.GetSaudeServico(s);
+                                    var pct = Store.GetPctExibidoServico(s);
+                                    var tipo = Store.GetTipoServico(s.TipoServicoId);
+                                    <tr>
+                                        <td>
+                                            <i class="dot @saude.DotClass" title="@saude.Label"></i>
+                                            <span style="font-size:12px;margin-left:4px">@s.Status</span>
+                                        </td>
+                                        <td><strong>#@s.Id · @tipo?.Nome</strong></td>
+                                        <td><span class="badge b-muted">@(s.ModoExecucao == "oficina" ? "Oficina → Instalação" : "No Local")</span></td>
+                                        <td>@Store.GetFaseAtualServico(s)</td>
+                                        <td>
+                                            <div style="display:flex;align-items:center;gap:6px">
+                                                <div class="pbar" style="--p:@pct"><i style="width:@(pct)%"></i></div>
+                                                <span class="mono" style="font-size:12px">@pct%</span>
+                                            </div>
+                                        </td>
+                                        <td class="mono">@s.DtEntrega.ToString("dd/MM/yyyy")</td>
+                                        <td>
+                                            <button class="btn primary" style="padding:4px 9px;font-size:12px" @onclick="() => AbrirNoKanban(s.Id)">
+                                                Abrir no Kanban →
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                }
+
+                @* ==================== ABA 5: PORTAL DO CLIENTE ==================== *@
+                else if (ActiveTab == 5)
+                {
+                    var link = $"/obra/{ModalCli.PortalToken}";
+                    <div class="sub-box">
+                        <h4 style="margin:0 0 6px">🔗 Link Exclusivo do Portal de Acompanhamento (Sem Login/Senha)</h4>
+                        <p class="muted" style="margin:0 0 10px;font-size:12.5px">
+                            O cliente acessa o avanço em tempo real, linha do tempo por fases, fotos autorizadas (<code>VisivelPortal = true</code>) e resumo financeiro pelo celular.
+                        </p>
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <input class="mono" value="@($"https://hakointeriores.com.br{link}")" readonly style="flex:1;padding:9px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)" />
+                            <button class="btn" @onclick="CopiarLinkPortal">@(CopiadoPortal ? "✓ Link Copiado!" : "📋 Copiar Link")</button>
+                            <button class="btn" @onclick="RegenerarTokenPortal">↻ Regenerar Token</button>
+                            <button class="btn primary" @onclick='() => Nav.NavigateTo($"obra/{ModalCli.PortalToken}")'>👁 Visualizar Portal do Cliente</button>
+                        </div>
+                        <div class="fld-row" style="margin-top:12px">
+                            <label class="fld">Política de Expiração do Link Pós-Entrega
+                                <select @bind="ModalCli.PortalExpiracao">
+                                    <option value="90 dias pós-entrega">90 dias pós-entrega (Cobre garantia legal)</option>
+                                    <option value="30 dias pós-entrega">30 dias pós-entrega</option>
+                                    <option value="Sem expiração">Sem expiração automática</option>
+                                    <option value="Revogado imediatamente">Revogar acesso imediatamente</option>
+                                </select>
+                            </label>
+                            <label class="fld">Token Atual (Hash)
+                                <input class="mono" value="@ModalCli.PortalToken" readonly />
+                            </label>
+                        </div>
+                    </div>
+                }
+
+                @* ==================== ABA 6: CONTRATOS ==================== *@
+                else if (ActiveTab == 6)
+                {
+                    var contratos = Store.ContratosEmitidos.Where(x => x.ClienteId == ModalCli.Id).OrderByDescending(x => x.Id).ToList();
+                    @if (contratos.Count == 0)
+                    {
+                        <div class="placeholder" style="padding:28px">
+                            <p>Nenhum contrato emitido para este cliente.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <table class="grid">
+                            <thead>
+                                <tr>
+                                    <th>Status</th>
+                                    <th>Nº / Modelo</th>
+                                    <th>Arquivo PDF</th>
+                                    <th>Enviado</th>
+                                    <th>Assinado</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var ct in contratos)
+                                {
+                                    var tpl = Store.ModelosContrato.FirstOrDefault(m => m.Id == ct.TemplateId);
+                                    <tr>
+                                        <td><span class="badge @(ct.Status == "assinado" ? "b-ok" : ct.Status == "aguardando" ? "b-warn" : "b-info")">@ct.Status.ToUpper()</span></td>
+                                        <td><strong>#@ct.Id</strong> · @(tpl?.Nome ?? "Contrato")</td>
+                                        <td class="mono" style="font-size:12px">@ct.PdfNome</td>
+                                        <td class="mono">@ct.EnviadoEm</td>
+                                        <td class="mono">@ct.AssinadoEm</td>
+                                        <td>
+                                            <button class="btn" style="padding:4px 9px;font-size:12px" @onclick="() => PreviewContratoAba6 = PreviewContratoAba6 == ct ? null : ct">
+                                                👁 @(PreviewContratoAba6 == ct ? "Ocultar" : "Ver Texto")
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                        @if (PreviewContratoAba6 is not null)
+                        {
+                            <div class="sub-box" style="margin-top:10px">
+                                <strong>Pré-visualização do Contrato #@PreviewContratoAba6.Id (@PreviewContratoAba6.PdfNome):</strong>
+                                <pre style="white-space:pre-wrap;font-size:12px;background:var(--card);padding:12px;border-radius:8px;border:1px solid var(--line);margin-top:6px">@PreviewContratoAba6.TextoRenderizado</pre>
+                            </div>
+                        }
+                    }
+                }
+
+                @* ==================== ABA 7: FINANCEIRO CONSOLIDADO DO CLIENTE ==================== *@
+                else if (ActiveTab == 7 && Store.HasPerm("financeiro.view"))
+                {
+                    var servsCli = Store.Servicos.Where(s => s.ClienteId == ModalCli.Id).ToList();
+                    var lancsCli = Store.Lancamentos.Where(l => l.ClienteId == ModalCli.Id).OrderBy(l => l.Vencimento).ToList();
+                    var totalContratado = servsCli.Sum(s => s.ValorContrato);
+                    var totalRecebido = lancsCli.Where(l => !l.Pagar && l.Status == "pago").Sum(l => l.ValorCentavos);
+                    var aReceber = lancsCli.Where(l => !l.Pagar && l.Status is "pendente" or "vencido").Sum(l => l.ValorCentavos);
+                    var custosVinc = lancsCli.Where(l => l.Pagar && l.Status != "cancelado").Sum(l => l.ValorCentavos);
+
+                    <div class="fld-row" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px">
+                        <div class="kpi-mini">
+                            <small class="muted">ORÇAMENTO TOTAL CONTRATADO</small>
+                            <strong class="mono">@MockErpStore.FormatMoeda(totalContratado)</strong>
+                        </div>
+                        <div class="kpi-mini">
+                            <small class="muted">TOTAL JÁ RECEBIDO (▼)</small>
+                            <strong class="mono up">@MockErpStore.FormatMoeda(totalRecebido)</strong>
+                        </div>
+                        <div class="kpi-mini">
+                            <small class="muted">SALDO A RECEBER DO CLIENTE</small>
+                            <strong class="mono">@MockErpStore.FormatMoeda(aReceber)</strong>
+                        </div>
+                        <div class="kpi-mini">
+                            <small class="muted">CUSTOS / REPASSES DA OBRA (▲)</small>
+                            <strong class="mono down">@MockErpStore.FormatMoeda(custosVinc)</strong>
+                        </div>
+                    </div>
+
+                    <table class="grid">
+                        <thead>
+                            <tr>
+                                <th>Dir</th>
+                                <th>Status</th>
+                                <th>Serviço</th>
+                                <th>Descrição / Natureza</th>
+                                <th>Vencimento</th>
+                                <th class="num">Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var l in lancsCli)
+                            {
+                                var sv = Store.Servicos.FirstOrDefault(s => s.Id == l.ServicoId);
+                                var ts = sv is not null ? Store.GetTipoServico(sv.TipoServicoId) : null;
+                                <tr>
+                                    <td><span class="dir @(l.Pagar ? "out" : "in")">@(l.Pagar ? "▲ Pagar" : "▼ Receber")</span></td>
+                                    <td><span class="badge @(l.Status == "pago" ? "b-ok" : l.Status == "vencido" ? "b-err" : "b-warn")">@l.Status</span></td>
+                                    <td><small>#@l.ServicoId · @(ts?.Nome ?? "Serviço")</small></td>
+                                    <td>
+                                        <strong>@l.Descricao</strong>
+                                        <span class="badge b-muted" style="margin-left:6px">@l.Natureza</span>
+                                    </td>
+                                    <td class="mono">@l.Vencimento.ToString("dd/MM/yyyy")</td>
+                                    <td class="num mono"><strong>@MockErpStore.FormatMoeda(l.ValorCentavos)</strong></td>
+                                </tr>
+                            }
+                            @if (lancsCli.Count == 0)
+                            {
+                                <tr><td colspan="6" class="muted" style="text-align:center;padding:18px">Sem lançamentos financeiros registrados para este cliente.</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+
+                @* ==================== ABA 8: MENSAGENS (CRM + WHATSAPP EVOLUTION API) ==================== *@
+                else if (ActiveTab == 8)
+                {
+                    <div class="hint-banner" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap">
+                        <span>💬 Histórico Unificado: <strong>WhatsApp (Evolution API · @Store.EvolutionNumeroDedicado)</strong> + Notas Internas da Equipe</span>
+                        <span class="badge b-ok">Evolution API Online</span>
+                    </div>
+
+                    <div class="timeline-list" style="max-height:220px;overflow-y:auto;margin-bottom:10px">
+                        @if (ModalCli.Mensagens.Count == 0)
+                        {
+                            <p class="muted" style="padding:12px;margin:0">Nenhuma mensagem ou nota registrada ainda.</p>
+                        }
+                        @foreach (var m in ModalCli.Mensagens)
+                        {
+                            var isInternal = m.CanalAutor.Contains("Nota Interna", StringComparison.OrdinalIgnoreCase);
+                            <div class="tl-item" style="background:@(isInternal ? "rgba(197,160,89,.12)" : "var(--bg)")">
+                                <span class="mono muted" style="min-width:115px;font-size:11.5px">@m.Quando</span>
+                                <span class="badge @(isInternal ? "b-warn" : "b-info")" style="font-size:10.5px">@m.CanalAutor</span>
+                                <span style="font-size:13px">@m.Texto</span>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="sub-box">
+                        <div class="fld-row" style="grid-template-columns: 220px 1fr">
+                            <label class="fld">Canal de Envio
+                                <select @bind="NovoCanalMsg">
+                                    <option value="WhatsApp (Evolution API)">📲 Enviar WhatsApp ao Cliente</option>
+                                    <option value="Nota Interna">📝 Nota Interna da Equipe</option>
+                                </select>
+                            </label>
+                            <label class="fld">Mensagem / Anotação
+                                <div style="display:flex;gap:8px">
+                                    <input style="flex:1" @bind="NovoTextoMsg" placeholder="Digite a mensagem para o cliente ou nota interna..." />
+                                    <button class="btn primary" @onclick="EnviarMensagemCrm">Enviar</button>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                }
             </div>
         </div>
     </div>
 }
 
-@code {
-    class Cli
-    {
-        public int Id; public string Nome = ""; public string Celular = "";
-        public bool IsLead; public bool Ativo = true;
-        public int Obras; public string ObraIcon = ""; public string ObraDesc = ""; public bool Atrasada;
-    }
+<style>
+    .flt-inp, .flt-sel { background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font-size: 12.5px; font-family: inherit; }
+    .flt-chk { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--text); cursor: pointer; background: var(--card); border: 1px solid var(--line); padding: 6px 10px; border-radius: 8px; }
+    .modal.modal-lg { width: min(940px, 96vw); max-height: 90vh; display: flex; flex-direction: column; padding: 20px 24px; }
+    .modal-body-scroll { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
+    .sec-divider { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-top: 8px; }
+    .sub-box { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .item-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+    .timeline-list { display: flex; flex-direction: column; gap: 6px; }
+    .tl-item { display: flex; align-items: baseline; gap: 10px; padding: 7px 10px; background: var(--bg); border-radius: 8px; border: 1px solid var(--line); flex-wrap: wrap; }
+    .hint-banner { background: rgba(197,160,89,.12); border: 1px solid rgba(197,160,89,.35); padding: 8px 12px; border-radius: 8px; font-size: 12.5px; }
+    .warn-panel { background: rgba(192,57,43,.08); border: 1px solid var(--err); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+    .alert-box { padding: 8px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 600; }
+    .alert-box.ok { background: rgba(46,158,91,.15); color: var(--ok); }
+    .alert-box.err { background: rgba(192,57,43,.15); color: var(--err); }
+    .kpi-mini { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+    .kpi-mini strong { font-size: 16px; }
+</style>
 
-    List<Cli> Rows =
-    [
-        new() { Id = 1, Nome = "Mariana Costa", Celular = "(11) 98765-1100", Obras = 2, ObraIcon = "🛠", ObraDesc = "Cozinha apto 402 · Painel living", Atrasada = true },
-        new() { Id = 2, Nome = "Roberto Almeida", Celular = "(11) 97654-2200", Obras = 1, ObraIcon = "🛠", ObraDesc = "Dormitório planejado" },
-        new() { Id = 3, Nome = "Fernanda Lira", Celular = "(11) 96543-3300", IsLead = true },
-        new() { Id = 4, Nome = "Paulo Henrique", Celular = "(11) 95432-4400", Obras = 1, ObraIcon = "✓", ObraDesc = "Banheiro — entregue 10/2026" },
-        new() { Id = 5, Nome = "Juliana Matos", Celular = "(11) 94321-5500", IsLead = true },
-        new() { Id = 6, Nome = "Carlos Drumond", Celular = "(11) 93210-6600", Ativo = false, Obras = 1, ObraIcon = "✗", ObraDesc = "Reforma sala — cancelada" },
-        new() { Id = 7, Nome = "Beatriz Nunes", Celular = "(11) 92109-7700", Obras = 3, ObraIcon = "🛠", ObraDesc = "2 em andamento · 1 entregue", Atrasada = true },
-        new() { Id = 8, Nome = "André Sales", Celular = "(11) 91098-8800", IsLead = true, Ativo = false },
-        new() { Id = 9, Nome = "Camila Ferraz", Celular = "(11) 90087-9900", Obras = 1, ObraIcon = "🛠", ObraDesc = "Home office planejado" },
-        new() { Id = 10, Nome = "Diego Ramos", Celular = "(11) 99976-1010", Obras = 2, ObraIcon = "✓", ObraDesc = "Cozinha + banheiro entregues" },
-        new() { Id = 11, Nome = "Patrícia Gomes", Celular = "(11) 98865-1111", IsLead = true },
-        new() { Id = 12, Nome = "Tiago Braga", Celular = "(11) 97788-9900", IsLead = true },
-        new() { Id = 13, Nome = "Renata Piva", Celular = "(11) 96677-8888", IsLead = true },
-        new() { Id = 14, Nome = "Marcos Tuler", Celular = "(11) 95566-7777", Obras = 1, ObraIcon = "🛠", ObraDesc = "Reforma completa — negociação" },
-        new() { Id = 15, Nome = "Otávio Reis", Celular = "(11) 94455-6666", Ativo = false },
-    ];
+@code {
+    string Busca = "";
+    string FiltroTipo = "todos";
+    string FiltroStatus = "todos";
+    string FiltroOrigem = "todas";
+    bool FiltroComServicoAndamento;
+    bool FiltroComEtapaAtrasada;
 
     const int Size = 10;
     int Page;
-    Cli? Form;
+
+    ClienteItem? ModalCli;
     bool IsNew;
+    int ActiveTab = 1;
+    string NovoStatusTemp = "ativo";
+    string FeedbackMsg = "";
+    bool FeedbackErro;
 
-    int Pages => Math.Max(1, (int)Math.Ceiling(Rows.Count / (double)Size));
+    // Novo Lead manual -> cria card em Contato
+    int NovoLeadTipoServicoId = 1;
+    decimal NovoLeadValorReais = 35000;
 
-    void Novo() { Form = new Cli(); IsNew = true; }
-    void Editar(Cli c) { Form = c; IsNew = false; }
-    void Fechar() => Form = null;
-    void Salvar() { if (IsNew) { Form!.Id = Rows.Count + 1; Rows.Insert(0, Form!); } Fechar(); }
-    void Inativar() { Form!.Ativo = false; Fechar(); }
+    // Aba 3 states
+    int SelectedNegId;
+    bool ShowNovaNegForm;
+    int NovaNegTipoServicoId = 1;
+    decimal NovaNegValorReais = 30000;
+
+    bool ShowFormVisita;
+    string NovaVisitaData = "30/10/2026 14:30";
+    string NovaVisitaStatus = "realizada";
+    string NovaVisitaMedicoes = "";
+    string NovaVisitaObs = "";
+
+    bool ShowFormOrcamento;
+    decimal NovoOrcValorReais = 38000;
+    int NovoOrcPrazoDias = 30;
+    string NovoOrcPdf = "Orcamento_Hako.pdf";
+    string NovoOrcCondicoes = "30% de sinal na assinatura + 3x sem juros";
+    string NovoOrcEscopo = "";
+
+    // Aba 5 & 6 & 8 states
+    bool CopiadoPortal;
+    ContratoEmitidoItem? PreviewContratoAba6;
+    string NovoCanalMsg = "WhatsApp (Evolution API)";
+    string NovoTextoMsg = "";
+
+    List<ClienteItem> FilteredRows => Store.Clientes
+        .Where(c =>
+        {
+            if (!string.IsNullOrWhiteSpace(Busca))
+            {
+                var q = Busca.Trim();
+                bool match = c.Nome.Contains(q, StringComparison.OrdinalIgnoreCase)
+                          || c.Celular.Contains(q, StringComparison.OrdinalIgnoreCase)
+                          || c.Email.Contains(q, StringComparison.OrdinalIgnoreCase);
+                if (!match) return false;
+            }
+            if (FiltroTipo == "leads" && !c.IsLead) return false;
+            if (FiltroTipo == "clientes" && c.IsLead) return false;
+            if (FiltroStatus != "todos" && c.Status != FiltroStatus) return false;
+            if (FiltroOrigem != "todas" && c.Origem != FiltroOrigem) return false;
+            if (FiltroComServicoAndamento && !Store.Servicos.Any(s => s.ClienteId == c.Id && s.Status == "andamento"))
+                return false;
+            if (FiltroComEtapaAtrasada && !Store.Servicos.Any(s => s.ClienteId == c.Id && Store.GetSaudeServico(s).DotClass == "s-err"))
+                return false;
+            return true;
+        })
+        .ToList();
+
+    int Pages => Math.Max(1, (int)Math.Ceiling(FilteredRows.Count / (double)Size));
+
+    void Novo()
+    {
+        FeedbackMsg = "";
+        IsNew = true;
+        ActiveTab = 1;
+        NovoStatusTemp = "ativo";
+        ModalCli = new ClienteItem
+        {
+            Id = Store.Clientes.Count > 0 ? Store.Clientes.Max(x => x.Id) + 1 : 1,
+            IsLead = true,
+            Status = "ativo",
+            Origem = "indicacao",
+            PortalToken = $"hako-{Guid.NewGuid().ToString("N")[..10]}"
+        };
+    }
+
+    void AbrirModal(ClienteItem c)
+    {
+        FeedbackMsg = "";
+        IsNew = false;
+        ActiveTab = 1;
+        ModalCli = c;
+        NovoStatusTemp = c.Status;
+        SelectedNegId = Store.Negociacoes.Where(n => n.ClienteId == c.Id).Select(n => n.Id).LastOrDefault();
+        ShowNovaNegForm = false;
+        ShowFormVisita = false;
+        ShowFormOrcamento = false;
+        PreviewContratoAba6 = null;
+        CopiadoPortal = false;
+    }
+
+    void Fechar()
+    {
+        ModalCli = null;
+        FeedbackMsg = "";
+    }
+
+    void SalvarDadosPessoais()
+    {
+        if (ModalCli is null) return;
+        if (string.IsNullOrWhiteSpace(ModalCli.Nome) || string.IsNullOrWhiteSpace(ModalCli.Celular))
+        {
+            FeedbackErro = true;
+            FeedbackMsg = "Preencha Nome completo e Celular (campos obrigatórios).";
+            return;
+        }
+
+        if (!IsNew && NovoStatusTemp != "ativo" && string.IsNullOrWhiteSpace(ModalCli.MotivoStatus))
+        {
+            FeedbackErro = true;
+            FeedbackMsg = $"O motivo é obrigatório para alterar o status do cliente para '{NovoStatusTemp}'.";
+            return;
+        }
+
+        if (IsNew)
+        {
+            ModalCli.IsLead = true; // Toda pessoa sem contrato assinado nasce como Lead
+            ModalCli.Status = "ativo";
+            ModalCli.Timeline.Add(new("30/10/2026 10:00", Store.CurrentRole, "Cadastro criado manualmente → Card de negociação aberto automaticamente em 'Contato'"));
+            Store.Clientes.Insert(0, ModalCli);
+
+            var novaNeg = new NegociacaoItem
+            {
+                Id = Store.Negociacoes.Count > 0 ? Store.Negociacoes.Max(x => x.Id) + 1 : 1,
+                ClienteId = ModalCli.Id,
+                TipoServicoId = NovoLeadTipoServicoId,
+                Estagio = "Contato",
+                Status = "em_andamento",
+                ValorEstimado = (long)(NovoLeadValorReais * 100),
+                Origem = ModalCli.Origem,
+                CriadoEm = "30/10/2026",
+                ParadoDias = 0
+            };
+            Store.Negociacoes.Add(novaNeg);
+            SelectedNegId = novaNeg.Id;
+            IsNew = false;
+            FeedbackErro = false;
+            FeedbackMsg = $"Lead '{ModalCli.Nome}' cadastrado e Negociação #{novaNeg.Id} criada na coluna 'Contato' do Funil!";
+            Store.NotifyStateChanged();
+            return;
+        }
+
+        if (ModalCli.Status != NovoStatusTemp)
+        {
+            var ant = ModalCli.Status;
+            ModalCli.Status = NovoStatusTemp;
+            ModalCli.Timeline.Add(new("30/10/2026 10:05", Store.CurrentRole, $"Status alterado de '{ant}' para '{NovoStatusTemp}'. Motivo: {ModalCli.MotivoStatus}"));
+
+            // Regra de cascata: suspender cliente suspende todos os serviços em andamento!
+            if (NovoStatusTemp == "suspenso")
+            {
+                var ativos = Store.Servicos.Where(s => s.ClienteId == ModalCli.Id && s.Status == "andamento").ToList();
+                foreach (var sv in ativos)
+                {
+                    sv.Status = "suspenso";
+                    sv.MotivoStatus = $"Cascata: Cliente suspenso ({ModalCli.MotivoStatus})";
+                }
+                if (ativos.Count > 0)
+                {
+                    ModalCli.Timeline.Add(new("30/10/2026 10:05", "Sistema (Cascata)", $"{ativos.Count} serviço(s) em andamento foram SUSPENSOS automaticamente devido à suspensão do cliente."));
+                }
+            }
+        }
+
+        FeedbackErro = false;
+        FeedbackMsg = "Dados pessoais salvos com sucesso!";
+        Store.NotifyStateChanged();
+    }
+
+    void SalvarDocumentos()
+    {
+        if (ModalCli is null) return;
+        ModalCli.Timeline.Add(new("30/10/2026 10:10", Store.CurrentRole, $"Qualificação contratual atualizada na Aba 2 (CPF/CNPJ: {ModalCli.CpfCnpj})"));
+        FeedbackErro = false;
+        FeedbackMsg = "Documentos e qualificação para contrato atualizados!";
+        Store.NotifyStateChanged();
+    }
+
+    void CriarNovaNegociacaoAba3()
+    {
+        if (ModalCli is null) return;
+        var nova = new NegociacaoItem
+        {
+            Id = Store.Negociacoes.Count > 0 ? Store.Negociacoes.Max(x => x.Id) + 1 : 1,
+            ClienteId = ModalCli.Id,
+            TipoServicoId = NovaNegTipoServicoId,
+            Estagio = "Contato",
+            Status = "em_andamento",
+            ValorEstimado = (long)(NovaNegValorReais * 100),
+            Origem = ModalCli.Origem,
+            CriadoEm = "30/10/2026",
+            ParadoDias = 0
+        };
+        Store.Negociacoes.Add(nova);
+        SelectedNegId = nova.Id;
+        ShowNovaNegForm = false;
+        var ts = Store.GetTipoServico(NovaNegTipoServicoId);
+        ModalCli.Timeline.Add(new("30/10/2026 10:15", Store.CurrentRole, $"Nova negociação #{nova.Id} ({ts?.Nome}) iniciada em 'Contato'"));
+        FeedbackErro = false;
+        FeedbackMsg = $"Nova Negociação #{nova.Id} criada em 'Contato'!";
+        Store.NotifyStateChanged();
+    }
+
+    void SalvarVisita(NegociacaoItem neg)
+    {
+        if (ModalCli is null) return;
+        var vis = new VisitaItem
+        {
+            Id = neg.Visitas.Count + 1,
+            NegociacaoId = neg.Id,
+            DataAgendada = NovaVisitaData,
+            DataRealizada = NovaVisitaStatus == "realizada" ? NovaVisitaData : "",
+            Status = NovaVisitaStatus,
+            Medicoes = NovaVisitaMedicoes,
+            Observacoes = NovaVisitaObs
+        };
+        neg.Visitas.Add(vis);
+        ShowFormVisita = false;
+        NovaVisitaMedicoes = "";
+        NovaVisitaObs = "";
+        ModalCli.Timeline.Add(new("30/10/2026 10:20", Store.CurrentRole, $"Visita ({vis.Status}) registrada na Negociação #{neg.Id}: {vis.Medicoes}"));
+        FeedbackErro = false;
+        FeedbackMsg = "Visita / Medições registradas com sucesso (disponíveis para o Contrato)!";
+        Store.NotifyStateChanged();
+    }
+
+    void MarcarVisitaRealizada(NegociacaoItem neg, VisitaItem v)
+    {
+        v.Status = "realizada";
+        v.DataRealizada = "30/10/2026 15:00";
+        if (string.IsNullOrWhiteSpace(v.Medicoes))
+            v.Medicoes = "Medidas conferidas em campo conforme projeto executivo.";
+        ModalCli?.Timeline.Add(new("30/10/2026 15:00", Store.CurrentRole, $"Medições confirmadas na Visita #{v.Id} (Negociação #{neg.Id})"));
+        Store.NotifyStateChanged();
+    }
+
+    void AbrirFormOrcamento(NegociacaoItem neg)
+    {
+        NovoOrcValorReais = neg.ValorEstimado / 100m;
+        NovoOrcPrazoDias = 30;
+        NovoOrcPdf = $"Orcamento_v{neg.Orcamentos.Count + 1}_{ModalCli?.Nome.Replace(" ", "")}.pdf";
+        ShowFormOrcamento = !ShowFormOrcamento;
+    }
+
+    void SalvarOrcamento(NegociacaoItem neg)
+    {
+        if (ModalCli is null) return;
+        foreach (var ant in neg.Orcamentos.Where(o => o.Status == "enviado"))
+            ant.Status = "substituido";
+
+        var novo = new OrcamentoItem
+        {
+            Id = Store.Negociacoes.SelectMany(n => n.Orcamentos).Select(o => o.Id).DefaultIfEmpty(0).Max() + 1,
+            NegociacaoId = neg.Id,
+            Versao = neg.Orcamentos.Count + 1,
+            Valor = (long)(NovoOrcValorReais * 100),
+            PrazoExecucaoDias = NovoOrcPrazoDias,
+            CondicoesPagamento = NovoOrcCondicoes,
+            EscopoResumo = NovoOrcEscopo,
+            ArquivoPdf = NovoOrcPdf,
+            Status = "enviado",
+            EnviadoEm = "30/10/2026"
+        };
+        neg.Orcamentos.Add(novo);
+        neg.ValorEstimado = novo.Valor;
+        ShowFormOrcamento = false;
+        ModalCli.Timeline.Add(new("30/10/2026 10:30", Store.CurrentRole, $"Orçamento v{novo.Versao} enviado ({MockErpStore.FormatMoeda(novo.Valor)}) na Negociação #{neg.Id}"));
+        FeedbackErro = false;
+        FeedbackMsg = $"Orçamento v{novo.Versao} registrado e enviado!";
+        Store.NotifyStateChanged();
+    }
+
+    void AprovarOrcamentoAba3(NegociacaoItem neg, OrcamentoItem orc)
+    {
+        orc.Status = "aceito";
+        orc.RespondidoEm = "30/10/2026";
+        ModalCli?.Timeline.Add(new("30/10/2026 10:40", Store.CurrentRole, $"Orçamento v{orc.Versao} ({MockErpStore.FormatMoeda(orc.Valor)}) APROVADO pelo cliente na Negociação #{neg.Id}"));
+        FeedbackErro = false;
+        FeedbackMsg = $"Orçamento v{orc.Versao} marcado como ACEITO! Pronto para emissão de Contrato.";
+        Store.NotifyStateChanged();
+    }
+
+    void RecusarOrcamentoAba3(NegociacaoItem neg, OrcamentoItem orc)
+    {
+        orc.Status = "recusado";
+        orc.RespondidoEm = "30/10/2026";
+        ModalCli?.Timeline.Add(new("30/10/2026 10:45", Store.CurrentRole, $"Orçamento v{orc.Versao} recusado pelo cliente na Negociação #{neg.Id}"));
+        Store.NotifyStateChanged();
+    }
+
+    void IrParaFunil()
+    {
+        Fechar();
+        Store.ActiveSection = "funil";
+        Store.NotifyStateChanged();
+    }
+
+    void AbrirNoKanban(int servicoId)
+    {
+        Fechar();
+        Store.SelectedServicoKanbanId = servicoId;
+        Store.ActiveSection = "kanban";
+        Store.NotifyStateChanged();
+    }
+
+    void CopiarLinkPortal()
+    {
+        CopiadoPortal = true;
+    }
+
+    void RegenerarTokenPortal()
+    {
+        if (ModalCli is null) return;
+        ModalCli.PortalToken = $"hako-{Guid.NewGuid().ToString("N")[..10]}";
+        ModalCli.Timeline.Add(new("30/10/2026 11:00", Store.CurrentRole, "Token do Portal do Cliente regenerado (link anterior invalidado)"));
+        FeedbackErro = false;
+        FeedbackMsg = "Novo token de Portal gerado! O link anterior foi invalidado.";
+    }
+
+    void EnviarMensagemCrm()
+    {
+        if (ModalCli is null || string.IsNullOrWhiteSpace(NovoTextoMsg)) return;
+        var autor = NovoCanalMsg == "Nota Interna" ? $"Nota Interna ({Store.CurrentRole})" : $"{Store.CurrentRole} (WhatsApp)";
+        ModalCli.Mensagens.Add(new("30/10/2026 11:15", autor, NovoTextoMsg));
+        ModalCli.Timeline.Add(new("30/10/2026 11:15", Store.CurrentRole, $"Mensagem registrada em Aba 8 ({autor})"));
+        NovoTextoMsg = "";
+        Store.NotifyStateChanged();
+    }
+
+    static string GetStatusDot(string status) => status switch
+    {
+        "ativo" => "on",
+        "suspenso" => "s-warn",
+        "cancelado" => "s-err",
+        _ => "off"
+    };
+
+    static string GetStatusBadge(string status) => status switch
+    {
+        "ativo" => "b-ok",
+        "suspenso" => "b-warn",
+        "cancelado" => "b-err",
+        _ => "b-muted"
+    };
+
+    static string GetOrcStatusBadge(string status) => status switch
+    {
+        "aceito" => "b-ok",
+        "enviado" => "b-info",
+        "recusado" => "b-err",
+        _ => "b-muted"
+    };
+
+    static string FormatOrigem(string o) => o switch
+    {
+        "lp" => "LP",
+        "instagram" => "Instagram",
+        "indicacao" => "Indicação",
+        "parceiro" => "Parceiro",
+        _ => "Outro"
+    };
 }

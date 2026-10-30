@@ -1,0 +1,464 @@
+@inject MockErpStore Store
+
+<style>
+  .gantt-toolbar {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+  }
+  .gantt-toolbar select {
+    background: var(--card); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 10px; font-size: 13px; font-family: inherit;
+  }
+  .gantt-card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    overflow: auto; flex: 1; display: flex; flex-direction: column;
+  }
+  .gantt-table {
+    width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 980px;
+  }
+  .gantt-table th {
+    background: var(--bg); color: var(--muted); font-size: 10.5px;
+    text-transform: uppercase; letter-spacing: .07em; padding: 10px 10px;
+    border-bottom: 1px solid var(--line); border-right: 1px solid var(--line);
+    text-align: left; white-space: nowrap;
+  }
+  .gantt-table td {
+    padding: 7px 10px; border-bottom: 1px solid var(--line);
+    border-right: 1px solid var(--line); vertical-align: middle; white-space: nowrap;
+  }
+  .gantt-row-srv {
+    background: rgba(197,160,89,.11); font-weight: 700;
+  }
+  .gantt-row-parent {
+    background: rgba(58,123,213,.05); font-weight: 600;
+  }
+  .gantt-row-sub td:first-child {
+    padding-left: 28px;
+  }
+  .gantt-timeline-cell {
+    position: relative; width: 46%; min-width: 420px; padding: 0 !important;
+    background-image: repeating-linear-gradient(
+      to right,
+      transparent,
+      transparent calc(10% - 1px),
+      var(--line) calc(10% - 1px),
+      var(--line) 10%
+    );
+  }
+  .gantt-today-line {
+    position: absolute; top: 0; bottom: 0; width: 2px;
+    background: var(--err); z-index: 4; pointer-events: none;
+  }
+  .gantt-today-tag {
+    position: absolute; top: 2px; transform: translateX(-50%);
+    background: var(--err); color: #fff; font-size: 9.5px; font-weight: 700;
+    padding: 1px 5px; border-radius: 4px; z-index: 5; white-space: nowrap;
+  }
+  .gbar-wrap {
+    position: relative; height: 30px; width: 100%;
+  }
+  .gbar {
+    position: absolute; top: 5px; height: 20px; border-radius: 6px;
+    background: rgba(136,136,136,.22); border: 1px solid var(--line);
+    overflow: hidden; display: flex; align-items: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+  .gbar-srv {
+    top: 7px; height: 16px; border-radius: 99px;
+    background: rgba(197,160,89,.25); border: 1px solid var(--accent);
+  }
+  .gbar-fill {
+    height: 100%; transition: width .2s;
+  }
+  .gbar-label {
+    position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; font-size: 10.5px; font-weight: 700;
+    color: var(--text); text-shadow: 0 0 4px var(--card); pointer-events: none;
+  }
+  .gbar.h-white { border-color: #bbb; background: rgba(187,187,187,.2); }
+  .gbar.h-white .gbar-fill { background: #999; }
+  .gbar.h-green { border-color: var(--ok); background: rgba(46,158,91,.18); }
+  .gbar.h-green .gbar-fill { background: var(--ok); }
+  .gbar.h-yellow { border-color: var(--warn); background: rgba(217,154,34,.2); }
+  .gbar.h-yellow .gbar-fill { background: var(--warn); }
+  .gbar.h-red { border-color: var(--err); background: rgba(192,57,43,.2); }
+  .gbar.h-red .gbar-fill { background: var(--err); }
+  .gbar.h-blue { border-color: var(--info); background: rgba(58,123,213,.2); }
+  .gbar.h-blue .gbar-fill { background: var(--info); }
+
+  .gbtn {
+    background: var(--card); color: var(--text); border: 1px solid var(--line);
+    border-radius: 5px; padding: 1px 6px; font-size: 11px; cursor: pointer;
+    font-family: inherit;
+  }
+  .gbtn:hover { border-color: var(--accent); background: rgba(197,160,89,.15); }
+  .collapse-btn {
+    background: none; border: 0; color: var(--accent); font-weight: 700;
+    cursor: pointer; padding: 0 4px; font-size: 13px;
+  }
+</style>
+
+@{
+  var emAndamento = Store.Servicos.Where(s => s.Status == "andamento").OrderBy(s => s.DtInicio).ToList();
+  var servicosVisiveis = Store.SelectedServicoCronogramaId == 0
+    ? emAndamento
+    : emAndamento.Where(s => s.Id == Store.SelectedServicoCronogramaId).ToList();
+
+  if (servicosVisiveis.Count == 0 && emAndamento.Count > 0)
+  {
+    Store.SelectedServicoCronogramaId = 0;
+    servicosVisiveis = emAndamento;
+  }
+
+  var (winStart, winEnd) = CalcularJanelaTimeline(servicosVisiveis);
+  var totalSpanDays = Math.Max(1, winEnd.DayNumber - winStart.DayNumber);
+  var hoje = new DateOnly(2026, 10, 30);
+  var hojePct = Math.Clamp((hoje.DayNumber - winStart.DayNumber) * 100.0 / totalSpanDays, 0, 100);
+  var podeEditar = Store.HasPerm("servicos.edit");
+}
+
+<p class="hint">
+  Cronograma Gantt (estilo MS Project) em paralelo ao Kanban · exibe hierarquia Obra → Tarefa Pai → Sub-tarefas, predecessoras (🔗), linha de Hoje (30/10/2026) e preenchimento interno sincronizado com o Kanban.
+</p>
+
+<div class="gantt-toolbar">
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <label for="sel-srv-gantt"><strong>Visão do Cronograma:</strong></label>
+    <select id="sel-srv-gantt" @bind="Store.SelectedServicoCronogramaId" @bind:after="LimparAviso">
+      <option value="0">📋 Todos os serviços em andamento (Visão Consolidada — @emAndamento.Count obras)</option>
+      @foreach (var s in emAndamento)
+      {
+        var c = Store.GetCliente(s.ClienteId);
+        var t = Store.GetTipoServico(s.TipoServicoId);
+        <option value="@s.Id">#@s.Id · @t?.Nome — @c?.Nome (@Store.GetPctExibidoServico(s)%)</option>
+      }
+    </select>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <div class="tabs" style="margin:0">
+      <button class="tab @(Zoom == "dia" ? "on" : "")" style="padding:5px 12px" @onclick='() => Zoom = "dia"'>Dia</button>
+      <button class="tab @(Zoom == "semana" ? "on" : "")" style="padding:5px 12px" @onclick='() => Zoom = "semana"'>Semana</button>
+      <button class="tab @(Zoom == "mes" ? "on" : "")" style="padding:5px 12px" @onclick='() => Zoom = "mes"'>Mês</button>
+    </div>
+    <button class="btn" @onclick="IrParaHoje">📍 Ir para Hoje (30/10/2026)</button>
+    <button class="btn primary" @onclick="AbrirNoKanban">▦ Abrir no Kanban</button>
+  </div>
+</div>
+
+@if (!string.IsNullOrEmpty(AvisoCronograma))
+{
+  <div style="background:rgba(217,154,34,.14);border:1px solid var(--warn);color:var(--warn);padding:9px 14px;border-radius:10px;margin-bottom:10px;font-size:12.5px;display:flex;justify-content:space-between;align-items:center">
+    <span>⚠ @AvisoCronograma</span>
+    <button class="btn" style="padding:2px 8px" @onclick='() => AvisoCronograma = ""'>✕</button>
+  </div>
+}
+
+<div class="gantt-card">
+  <table class="gantt-table">
+    <thead>
+      <tr>
+        <th style="min-width:250px">Estrutura Analítica (Serviço / Tarefa / Sub-tarefa)</th>
+        <th>Dep.</th>
+        <th>Responsável</th>
+        <th>Início → Fim</th>
+        <th>Dur.</th>
+        <th>%</th>
+        @if (podeEditar)
+        {
+          <th>Ajuste Prazo</th>
+        }
+        <th class="gantt-timeline-cell" style="padding:8px 12px !important">
+          <div style="display:flex;justify-content:space-between;align-items:center;position:relative">
+            <span>@winStart.ToString("dd/MM/yyyy")</span>
+            <span>Escala: @Zoom.ToUpperInvariant() (@totalSpanDays dias)</span>
+            <span>@winEnd.ToString("dd/MM/yyyy")</span>
+            <span class="gantt-today-tag" style="left:@(hojePct.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%">
+              Hoje 30/10
+            </span>
+          </div>
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      @foreach (var s in servicosVisiveis)
+      {
+        var cli = Store.GetCliente(s.ClienteId);
+        var tipo = Store.GetTipoServico(s.TipoServicoId);
+        var pctSrv = Store.GetPctExibidoServico(s);
+        var saudeSrv = Store.GetSaudeServico(s);
+        var (srvLeft, srvWidth) = CalcularBarraPct(s.DtInicio, s.DtEntrega, winStart, totalSpanDays);
+        var topos = s.Etapas.Where(e => e.ParentId == null).OrderBy(e => e.Ordem).ToList();
+
+        @* Linha Resumo do Serviço *@
+        <tr class="gantt-row-srv">
+          <td>
+            <span class="dot @saudeSrv.DotClass" style="margin-right:6px"></span>
+            <span class="obra-ico">@(tipo?.Categoria == "alvenaria" ? "🧱" : "🪚")</span>
+            <strong>#@s.Id @tipo?.Nome — @cli?.Nome</strong>
+            @if (Store.IsProntoParaFinalizar(s))
+            {
+              <span class="badge b-ok" style="margin-left:6px">★ 100%</span>
+            }
+          </td>
+          <td>—</td>
+          <td>Equipe (@s.Equipe.Count)</td>
+          <td class="mono">@s.DtInicio.ToString("dd/MM") → @s.DtEntrega.ToString("dd/MM")</td>
+          <td class="mono">@s.PrazoDias d</td>
+          <td class="mono"><strong>@pctSrv%</strong></td>
+          @if (podeEditar)
+          {
+            <td>
+              <button class="gbtn" title="Abrir este serviço no Kanban" @onclick="() => AbrirServicoNoKanban(s)">▦ Kanban</button>
+            </td>
+          }
+          <td class="gantt-timeline-cell">
+            <div class="gantt-today-line" style="left:@(hojePct.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+            <div class="gbar-wrap">
+              <div class="gbar gbar-srv"
+                   style="left:@(srvLeft.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%;width:@(srvWidth.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%">
+                <div class="gbar-fill" style="width:@pctSrv%;background:var(--accent)"></div>
+                <span class="gbar-label">@pctSrv% concluído</span>
+              </div>
+            </div>
+          </td>
+        </tr>
+
+        @* Tarefas de Topo e Sub-tarefas *@
+        @foreach (var t in topos)
+        {
+          var filhas = s.Etapas.Where(x => x.ParentId == t.Id).OrderBy(x => x.Ordem).ToList();
+          var temFilhas = filhas.Count > 0;
+          var recolhida = TarefasRecolhidas.Contains(t.Id);
+          var pred = t.PredecessoraId is int pid ? s.Etapas.FirstOrDefault(x => x.Id == pid) : null;
+          var pctT = Store.GetPctEtapa(s, t);
+          var saudeT = Store.GetSaudeEtapa(t);
+          var (tLeft, tWidth) = CalcularBarraPct(t.DtInicioPrevista, t.DtPrevista, winStart, totalSpanDays);
+
+          <tr class="@(temFilhas ? "gantt-row-parent" : "")">
+            <td>
+              @if (temFilhas)
+              {
+                <button class="collapse-btn" @onclick="() => ToggleCollapse(t.Id)" title="Expandir/Recolher sub-tarefas">
+                  @(recolhida ? "▸" : "▾")
+                </button>
+              }
+              else
+              {
+                <span style="display:inline-block;width:18px"></span>
+              }
+              <strong>@t.Ordem. @t.Nome</strong>
+              @if (temFilhas)
+              {
+                <span class="badge b-info" style="margin-left:5px">📂 @filhas.Count</span>
+              }
+            </td>
+            <td>
+              @if (pred is not null)
+              {
+                <span class="badge b-muted" title="Depende da conclusão de: @pred.Nome">🔗 #@pred.Ordem</span>
+              }
+              else
+              {
+                <span class="muted">—</span>
+              }
+            </td>
+            <td>@t.ResponsavelNome</td>
+            <td class="mono">@t.DtInicioPrevista.ToString("dd/MM") → @t.DtPrevista.ToString("dd/MM")</td>
+            <td class="mono">@t.DuracaoDias d</td>
+            <td class="mono"><strong>@pctT%</strong></td>
+            @if (podeEditar)
+            {
+              <td>
+                <div style="display:flex;gap:4px">
+                  <button class="gbtn" title="Reduzir duração em 1 dia" @onclick="() => AjustarDuracao(s, t, -1)">-1d</button>
+                  <button class="gbtn" title="Aumentar duração em 1 dia" @onclick="() => AjustarDuracao(s, t, +1)">+1d</button>
+                </div>
+              </td>
+            }
+            <td class="gantt-timeline-cell">
+              <div class="gantt-today-line" style="left:@(hojePct.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+              <div class="gbar-wrap">
+                <div class="gbar @saudeT.CssClass"
+                     title="@t.Nome (@t.Coluna · @pctT% · @saudeT.Label)"
+                     style="left:@(tLeft.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%;width:@(tWidth.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%">
+                  <div class="gbar-fill" style="width:@pctT%"></div>
+                  <span class="gbar-label">@t.Coluna (@pctT%)</span>
+                </div>
+              </div>
+            </td>
+          </tr>
+
+          @if (temFilhas && !recolhida)
+          {
+            @foreach (var f in filhas)
+            {
+              var pctF = t.Coluna == "Entregue" ? 100 : MockErpStore.GetPctColuna(f.Coluna);
+              var saudeF = Store.GetSaudeEtapa(f);
+              var (fLeft, fWidth) = CalcularBarraPct(f.DtInicioPrevista, f.DtPrevista, winStart, totalSpanDays);
+
+              <tr class="gantt-row-sub">
+                <td>
+                  <span class="muted">↳ @t.Ordem.@f.Ordem</span> @f.Nome
+                </td>
+                <td class="muted">Pai #@t.Ordem</td>
+                <td>@f.ResponsavelNome</td>
+                <td class="mono">@f.DtInicioPrevista.ToString("dd/MM") → @f.DtPrevista.ToString("dd/MM")</td>
+                <td class="mono">@f.DuracaoDias d</td>
+                <td class="mono">@pctF%</td>
+                @if (podeEditar)
+                {
+                  <td>
+                    <div style="display:flex;gap:4px">
+                      <button class="gbtn" title="Reduzir sub-tarefa em 1 dia" @onclick="() => AjustarDuracao(s, f, -1)">-1d</button>
+                      <button class="gbtn" title="Aumentar sub-tarefa em 1 dia" @onclick="() => AjustarDuracao(s, f, +1)">+1d</button>
+                    </div>
+                  </td>
+                }
+                <td class="gantt-timeline-cell">
+                  <div class="gantt-today-line" style="left:@(hojePct.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                  <div class="gbar-wrap">
+                    <div class="gbar @saudeF.CssClass"
+                         title="Sub-tarefa: @f.Nome (@f.Coluna · @pctF%)"
+                         style="left:@(fLeft.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%;width:@(fWidth.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))%;height:16px;top:7px">
+                      <div class="gbar-fill" style="width:@pctF%"></div>
+                      <span class="gbar-label" style="font-size:9.5px">@pctF%</span>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            }
+          }
+        }
+      }
+    </tbody>
+  </table>
+</div>
+
+@code {
+  private string Zoom { get; set; } = "semana";
+  private HashSet<int> TarefasRecolhidas { get; } = [];
+  private string AvisoCronograma { get; set; } = "";
+
+  private void LimparAviso() => AvisoCronograma = "";
+
+  private void ToggleCollapse(int etapaId)
+  {
+    if (!TarefasRecolhidas.Remove(etapaId))
+      TarefasRecolhidas.Add(etapaId);
+  }
+
+  private void IrParaHoje()
+  {
+    AvisoCronograma = "Linha vermelha de referência centralizada em Hoje: 30/10/2026.";
+  }
+
+  private void AbrirNoKanban()
+  {
+    if (Store.SelectedServicoCronogramaId > 0)
+      Store.SelectedServicoKanbanId = Store.SelectedServicoCronogramaId;
+    Store.ActiveSection = "kanban";
+    Store.NotifyStateChanged();
+  }
+
+  private void AbrirServicoNoKanban(ServicoItem s)
+  {
+    Store.SelectedServicoKanbanId = s.Id;
+    Store.ActiveSection = "kanban";
+    Store.NotifyStateChanged();
+  }
+
+  private (DateOnly Start, DateOnly End) CalcularJanelaTimeline(List<ServicoItem> servicos)
+  {
+    if (servicos.Count == 0)
+      return (new DateOnly(2026, 10, 1), new DateOnly(2026, 11, 30));
+
+    var minDate = servicos.Min(s => s.DtInicio);
+    var maxDate = servicos.Max(s => s.DtEntrega);
+
+    return Zoom switch
+    {
+      "dia" => (minDate.AddDays(-1), maxDate.AddDays(1)),
+      "mes" => (new DateOnly(minDate.Year, minDate.Month, 1), maxDate.AddDays(10)),
+      _ => (minDate.AddDays(-3), maxDate.AddDays(4))
+    };
+  }
+
+  private static (double LeftPct, double WidthPct) CalcularBarraPct(DateOnly ini, DateOnly fim, DateOnly winStart, int totalSpanDays)
+  {
+    var offset = ini.DayNumber - winStart.DayNumber;
+    var dur = Math.Max(1, fim.DayNumber - ini.DayNumber);
+    var left = Math.Clamp(offset * 100.0 / totalSpanDays, 0, 98);
+    var width = Math.Clamp(dur * 100.0 / totalSpanDays, 2, 100 - left);
+    return (left, width);
+  }
+
+  private void AjustarDuracao(ServicoItem s, ServicoEtapaItem etapa, int deltaDias)
+  {
+    var novaDur = etapa.DuracaoDias + deltaDias;
+    if (novaDur < 1)
+    {
+      AvisoCronograma = "A duração mínima de uma tarefa ou sub-tarefa é de 1 dia.";
+      return;
+    }
+
+    if (etapa.ParentId is null)
+    {
+      // Valida soma das durações das tarefas de topo <= PrazoDias do serviço
+      var topos = s.Etapas.Where(x => x.ParentId == null).ToList();
+      var somaOutras = topos.Where(x => x.Id != etapa.Id).Sum(x => x.DuracaoDias);
+      if (somaOutras + novaDur > s.PrazoDias)
+      {
+        AvisoCronograma = $"Bloqueado: a soma das tarefas de topo ({somaOutras + novaDur}d) excederia o prazo contratado do serviço ({s.PrazoDias}d).";
+        return;
+      }
+
+      // Se tiver sub-tarefas, não pode ficar menor que a soma das sub-tarefas
+      var filhas = s.Etapas.Where(x => x.ParentId == etapa.Id).ToList();
+      if (filhas.Count > 0)
+      {
+        var somaFilhas = filhas.Sum(f => f.DuracaoDias);
+        if (novaDur < somaFilhas)
+        {
+          AvisoCronograma = $"Bloqueado: a tarefa pai \"{etapa.Nome}\" não pode ter duração ({novaDur}d) menor que a soma de suas sub-tarefas ({somaFilhas}d).";
+          return;
+        }
+      }
+
+      var novaPrevista = etapa.DtInicioPrevista.AddDays(novaDur);
+      if (novaPrevista > s.DtEntrega)
+      {
+        AvisoCronograma = $"Bloqueado: o término da tarefa ({novaPrevista:dd/MM/yyyy}) ultrapassaria a data limite de entrega do serviço ({s.DtEntrega:dd/MM/yyyy}).";
+        return;
+      }
+
+      etapa.DuracaoDias = novaDur;
+      etapa.DtPrevista = novaPrevista;
+    }
+    else
+    {
+      var pai = s.Etapas.FirstOrDefault(x => x.Id == etapa.ParentId);
+      if (pai is null) return;
+      var irmas = s.Etapas.Where(x => x.ParentId == pai.Id && x.Id != etapa.Id).ToList();
+      var somaIrmas = irmas.Sum(x => x.DuracaoDias);
+      if (somaIrmas + novaDur > pai.DuracaoDias)
+      {
+        AvisoCronograma = $"Bloqueado: a soma das sub-tarefas ({somaIrmas + novaDur}d) não pode ultrapassar a duração da tarefa pai \"{pai.Nome}\" ({pai.DuracaoDias}d).";
+        return;
+      }
+
+      var novaPrevista = etapa.DtInicioPrevista.AddDays(novaDur);
+      if (novaPrevista > pai.DtPrevista)
+      {
+        AvisoCronograma = $"Bloqueado: a sub-tarefa não pode terminar após a data limite da tarefa pai ({pai.DtPrevista:dd/MM/yyyy}).";
+        return;
+      }
+
+      etapa.DuracaoDias = novaDur;
+      etapa.DtPrevista = novaPrevista;
+    }
+
+    AvisoCronograma = "";
+    Store.NotifyStateChanged();
+  }
+}

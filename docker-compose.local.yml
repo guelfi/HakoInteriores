@@ -7,6 +7,7 @@ services:
       - ./index.css:/usr/share/nginx/html/index.css:ro
       - ./index.js:/usr/share/nginx/html/index.js:ro
       - ./images:/usr/share/nginx/html/images:ro
+      - ./temp:/usr/share/nginx/html/temp:ro
     networks:
       - projetos-local
     restart: unless-stopped

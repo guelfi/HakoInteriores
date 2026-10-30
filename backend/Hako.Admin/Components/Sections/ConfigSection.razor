@@ -1,0 +1,769 @@
+@inject MockErpStore Store
+
+<p class="hint">
+    Configuração 100% parametrizável (MVP Hako + arquitetura pronta para SaaS) — Tipos de Serviço com árvore de etapas-padrão, endereço único da Oficina, regras de prazo, RBAC e Mini-CMS.
+</p>
+
+<!-- 4 Abas de Config -->
+<div class="tabs">
+    <button type="button" class='tab @(Tab == 0 ? "on" : "")' @onclick="() => Tab = 0">
+        1. Tipos de Serviço & Templates de Etapas
+    </button>
+    <button type="button" class='tab @(Tab == 1 ? "on" : "")' @onclick="() => Tab = 1">
+        2. Empresa, Oficina e Parâmetros
+    </button>
+    <button type="button" class='tab @(Tab == 2 ? "on" : "")' @onclick="() => Tab = 2">
+        3. Usuários e Permissões (RBAC)
+    </button>
+    <button type="button" class='tab @(Tab == 3 ? "on" : "")' @onclick="() => Tab = 3">
+        4. Integrações e Site (Mini-CMS)
+    </button>
+</div>
+
+@if (!string.IsNullOrEmpty(ToastMsg))
+{
+    <div style="background:rgba(46,158,91,.12);color:var(--ok);border:1px solid var(--ok);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px;display:flex;justify-content:space-between;align-items:center">
+        <span>✓ @ToastMsg</span>
+        <button type="button" class="btn" style="padding:3px 8px" @onclick="() => ToastMsg = string.Empty">✕</button>
+    </div>
+}
+
+@if (Tab == 0)
+{
+    <!-- ABA 1: Tipos de Serviço e Árvore de Etapas-Padrão -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;align-items:start">
+        <!-- Coluna Esquerda: Catálogo de Tipos de Serviço -->
+        <div class="grid-card" style="padding:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <h3 style="margin:0;font-size:16px;font-family:Georgia,serif">Catálogo de Tipos de Serviço</h3>
+                <button type="button" class="btn primary" @onclick="AbrirNovoTipo">+ Novo Tipo de Serviço</button>
+            </div>
+
+            <table class="grid" style="min-width:0">
+                <thead>
+                    <tr>
+                        <th>Status</th>
+                        <th>Tipo de Serviço</th>
+                        <th>Categoria</th>
+                        <th class="num">Etapas</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in Store.TiposServico)
+                    {
+                        var qtdPai = t.EtapasPadrao.Count(e => e.ParentId == null);
+                        var qtdSub = t.EtapasPadrao.Count(e => e.ParentId != null);
+                        var totalDias = t.EtapasPadrao.Where(e => e.ParentId == null).Sum(e => e.DuracaoDias);
+                        <tr class='@(SelectedTipoId == t.Id ? "sel" : "")' @onclick="() => SelectedTipoId = t.Id">
+                            <td>
+                                <span class='dot @(t.Ativo ? "on" : "off")' style="margin-left:0"></span>
+                            </td>
+                            <td>
+                                <strong>@t.Nome</strong>
+                                <div><small class="muted">Prazo padrão: @totalDias dias</small></div>
+                            </td>
+                            <td>
+                                <span class='badge @(t.Categoria == "mobiliario" ? "b-func" : "b-info")'>
+                                    @(t.Categoria == "mobiliario" ? "Mobiliário" : "Alvenaria")
+                                </span>
+                            </td>
+                            <td class="num mono">
+                                @qtdPai @(qtdSub > 0 ? $"(+{qtdSub} sub)" : "")
+                            </td>
+                            <td class="num" @onclick:stopPropagation="true">
+                                <button type="button" class="btn" style="padding:4px 8px;font-size:11.5px" @onclick="() => AbrirEditarTipo(t)">Editar</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Coluna Direita: Árvore de Etapas e Sub-tarefas Padrão do Tipo Selecionado -->
+        @{
+            var tipoSel = Store.GetTipoServico(SelectedTipoId) ?? Store.TiposServico.FirstOrDefault();
+        }
+        @if (tipoSel is not null)
+        {
+            <div class="grid-card" style="padding:16px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+                    <div>
+                        <h3 style="margin:0;font-size:16px;font-family:Georgia,serif">
+                            Árvore de Etapas-Padrão: @tipoSel.Nome
+                        </h3>
+                        <small class="muted">
+                            Copiada automaticamente para <code>ServicoEtapas</code> (Kanban + Gantt) ao criar serviço deste tipo.
+                        </small>
+                    </div>
+                    <button type="button" class="btn primary" @onclick="() => AbrirNovaEtapaPadrao(tipoSel, null)">
+                        + Etapa Pai
+                    </button>
+                </div>
+
+                <table class="grid" style="min-width:0;margin-top:10px">
+                    <thead>
+                        <tr>
+                            <th>Ordem / Hierarquia</th>
+                            <th>Duração</th>
+                            <th>Predecessora</th>
+                            <th class="num">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var pai in tipoSel.EtapasPadrao.Where(e => e.ParentId == null).OrderBy(e => e.Ordem))
+                        {
+                            var filhas = tipoSel.EtapasPadrao.Where(f => f.ParentId == pai.Id).OrderBy(f => f.Ordem).ToList();
+                            var predNome = pai.PredecessoraId.HasValue
+                                ? tipoSel.EtapasPadrao.FirstOrDefault(x => x.Id == pai.PredecessoraId.Value)?.Nome ?? $"#{pai.PredecessoraId}"
+                                : "— (Início imediato)";
+                            <tr>
+                                <td>
+                                    <strong>@pai.Ordem. @pai.Nome</strong>
+                                    @if (filhas.Count > 0)
+                                    {
+                                        <span class="badge b-func" style="margin-left:6px">@filhas.Count sub-tarefas</span>
+                                    }
+                                </td>
+                                <td class="mono">@pai.DuracaoDias d</td>
+                                <td><small class="muted">@predNome</small></td>
+                                <td class="num">
+                                    <div class="actions end">
+                                        <button type="button" class="btn" style="padding:3px 8px;font-size:11.5px"
+                                                title="Adicionar Sub-tarefa filha"
+                                                @onclick="() => AbrirNovaEtapaPadrao(tipoSel, pai.Id)">
+                                            + Sub
+                                        </button>
+                                        <button type="button" class="btn" style="padding:3px 8px;font-size:11.5px"
+                                                @onclick="() => AbrirEditarEtapaPadrao(tipoSel, pai)">
+                                            ✎
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+
+                            @foreach (var f in filhas)
+                            {
+                                <tr style="background:var(--bg)">
+                                    <td style="padding-left:28px">
+                                        <span class="muted">↳ @pai.Ordem.@f.Ordem</span> @f.Nome
+                                        <span class="badge b-muted" style="margin-left:6px">Sub-tarefa</span>
+                                    </td>
+                                    <td class="mono">@f.DuracaoDias d</td>
+                                    <td><small class="muted">Sub-tarefa de "@pai.Nome"</small></td>
+                                    <td class="num">
+                                        <button type="button" class="btn" style="padding:3px 8px;font-size:11.5px"
+                                                @onclick="() => AbrirEditarEtapaPadrao(tipoSel, f)">
+                                            ✎
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+else if (Tab == 1)
+{
+    <!-- ABA 2: Empresa, Oficina e Parâmetros (ConfigSistema) -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;align-items:start">
+        <div class="grid-card" style="padding:20px;display:flex;flex-direction:column;gap:12px">
+            <h3 style="margin:0;font-size:16px;font-family:Georgia,serif">Dados da Empresa & Oficina Hako</h3>
+            <small class="muted">Utilizados nos cabeçalhos de Contratos, PDFs, Portal do Cliente e serviços executados em oficina.</small>
+
+            <div class="fld-row">
+                <label class="fld">
+                    Nome Fantasia
+                    <input @bind="Store.EmpresaNomeFantasia" />
+                </label>
+                <label class="fld">
+                    CNPJ
+                    <input @bind="Store.EmpresaCnpj" />
+                </label>
+            </div>
+
+            <label class="fld">
+                Razão Social (Contratos)
+                <input @bind="Store.EmpresaRazaoSocial" />
+            </label>
+
+            <label class="fld">
+                Endereço da Sede Administrativa
+                <input @bind="Store.EmpresaEndereco" />
+            </label>
+
+            <label class="fld">
+                Cidade / Foro Eleito nos Contratos (`{{contrato.cidade_foro}}`)
+                <input @bind="Store.CidadeForo" />
+            </label>
+
+            <div style="background:rgba(197,160,89,.12);border:1px solid var(--accent);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:6px">
+                <label class="fld" style="color:var(--text)">
+                    <strong>🏭 Endereço Único da Oficina (`oficina.endereco`)</strong>
+                    <input @bind="Store.OficinaEndereco" />
+                </label>
+                <small class="muted">
+                    Usado automaticamente em todos os serviços com <code>modoExecucao = oficina</code> (ex.: Marcenaria), sem repetir cadastro por serviço.
+                </small>
+            </div>
+        </div>
+
+        <div class="grid-card" style="padding:20px;display:flex;flex-direction:column;gap:14px">
+            <h3 style="margin:0;font-size:16px;font-family:Georgia,serif">Parâmetros Operacionais (`ConfigSistema`)</h3>
+            <small class="muted">Gatilhos automáticos de saúde no Kanban/Cronograma, alertas do Funil e prazo de Garantia no Portal.</small>
+
+            <label class="fld">
+                Alerta Amarelo de Prazo no Kanban / Gantt (`kanban.alertaPct` — %)
+                <input type="number" min="10" max="99" @bind="Store.KanbanAlertaPct" />
+                <small class="muted" style="text-transform:none;letter-spacing:0">
+                    Padrão: <b>70%</b>. Quando o tempo decorrido da etapa atinge @Store.KanbanAlertaPct% da janela prevista sem concluir, o card muda de 🟢 Verde para 🟡 Amarelo.
+                </small>
+            </label>
+
+            <label class="fld">
+                Prazo de Garantia Pós-Entrega no Portal (`garantia.prazoDias` — dias)
+                <input type="number" min="1" max="1825" @bind="Store.GarantiaPrazoDias" />
+                <small class="muted" style="text-transform:none;letter-spacing:0">
+                    Padrão: <b>90 dias</b>. Mantém aberto o canal de chamado de garantia em <code>/obra/{token}</code> após o Termo de Entrega.
+                </small>
+            </label>
+
+            <label class="fld">
+                Alerta de Negociação Parada no Funil (`funil.diasAlertaParado` — dias)
+                <input type="number" min="1" max="90" @bind="Store.FunilDiasAlertaParado" />
+                <small class="muted" style="text-transform:none;letter-spacing:0">
+                    Padrão: <b>7 dias</b>. Exibe o badge <code>⚠ parado há X dias</code> nos cards ativos do Funil Comercial.
+                </small>
+            </label>
+
+            <div class="actions end" style="margin-top:6px">
+                <button type="button" class="btn primary" @onclick="SalvarConfigSistema">
+                    ✓ Salvar Parâmetros da Empresa
+                </button>
+            </div>
+        </div>
+    </div>
+}
+else if (Tab == 2)
+{
+    <!-- ABA 3: Usuários Internos e Matriz de Permissões (RBAC) -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="grid-card" style="padding:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <div>
+                    <h3 style="margin:0;font-size:16px;font-family:Georgia,serif">Usuários Internos (`/dashboard`)</h3>
+                    <small class="muted">Autenticação ASP.NET Identity + Roles que controlam o menu lateral, widgets e abas restritas.</small>
+                </div>
+                <button type="button" class="btn primary" @onclick="AbrirNovoUsuario">+ Novo Usuário</button>
+            </div>
+
+            <table class="grid" style="min-width:0">
+                <thead>
+                    <tr>
+                        <th>Status</th>
+                        <th>Login</th>
+                        <th>Nome Completo</th>
+                        <th>E-mail</th>
+                        <th>Role (Perfil de Acesso)</th>
+                        <th class="num">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var u in Store.Usuarios)
+                    {
+                        <tr>
+                            <td>
+                                <span class='dot @(u.Ativo ? "on" : "off")' style="margin-left:0;margin-right:6px"></span>
+                                @(u.Ativo ? "Ativo" : "Inativo")
+                            </td>
+                            <td class="mono"><strong>@u.Login</strong></td>
+                            <td>@u.Nome</td>
+                            <td>@u.Email</td>
+                            <td><span class="badge b-func">@u.Role</span></td>
+                            <td class="num">
+                                <button type="button" class="btn" style="padding:4px 10px;font-size:12px" @onclick="() => AbrirEditarUsuario(u)">
+                                    Editar
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Matriz Visual de Permissões -->
+        <div class="grid-card" style="padding:16px">
+            <h3 style="margin:0 0 6px;font-size:16px;font-family:Georgia,serif">Matriz de Permissões por Role (`RolePermissions`)</h3>
+            <small class="muted">
+                As roles operacionais (<code>Comercial</code> e <code>Serviços</code>) não possuem <code>financeiro.*</code> — a seção Financeiro e as abas financeiras de Cliente/Serviço ficam invisíveis para elas.
+            </small>
+
+            <table class="grid" style="min-width:0;margin-top:12px">
+                <thead>
+                    <tr>
+                        <th>Módulo / Recurso</th>
+                        <th>Admin</th>
+                        <th>Comercial</th>
+                        <th>Financeiro</th>
+                        <th>Serviços (Campo/Oficina)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var mod in PermissionModules)
+                    {
+                        <tr>
+                            <td><strong>@mod.Label</strong> <small class="muted">(@mod.Resource)</small></td>
+                            @foreach (var role in new[] { "Admin", "Comercial", "Financeiro", "Serviços" })
+                            {
+                                var access = GetRoleAccessLevel(role, mod.Resource);
+                                <td>
+                                    @if (access == "Ver + Editar")
+                                    {
+                                        <span class="badge b-ok">✓ Ver + Editar</span>
+                                    }
+                                    else if (access == "Somente Leitura")
+                                    {
+                                        <span class="badge b-info">👁 Somente Leitura</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge b-muted">🔒 Sem acesso</span>
+                                    }
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+else if (Tab == 3)
+{
+    <!-- ABA 4: Integrações e Site (Mini-CMS) -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;align-items:start">
+        <div class="grid-card" style="padding:20px;display:flex;flex-direction:column;gap:12px">
+            <h3 style="margin:0;font-size:16px;font-family:Georgia,serif">Assinatura Eletrônica (`ISignatureProvider`)</h3>
+            <small class="muted">Arquitetura pluggable para assinatura de contratos no Portal do Cliente.</small>
+
+            <label class="fld">
+                Provider Ativo
+                <select @bind="Store.SignatureProviderAtivo">
+                    <option value="Manual">ManualProvider (Aceite no Portal / Upload PDF Assinado — Padrão MVP)</option>
+                    <option value="ZapSign">ZapSignProvider (SaaS Brasil — API Webhook)</option>
+                    <option value="DocuSeal">DocuSealProvider (Open-Source Self-Hosted)</option>
+                </select>
+            </label>
+
+            <div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;font-size:12.5px">
+                <strong>Status atual:</strong> Provedor <code>@Store.SignatureProviderAtivo</code> selecionado. O Portal do Cliente (<code>/obra/{token}</code>) permite assinatura online transparente independente do provider.
+            </div>
+
+            <hr style="border:0;border-top:1px solid var(--line);margin:4px 0" />
+
+            <h3 style="margin:0;font-size:16px;font-family:Georgia,serif">WhatsApp Auxiliar (`IWhatsAppNotifier` — Evolution API)</h3>
+            <small class="muted">Canal auxiliar com eSIM dedicado (o Portal do Cliente segue sendo a fonte oficial da verdade).</small>
+
+            <label class="fld">
+                URL Interna da Instância Evolution API
+                <input @bind="Store.EvolutionInstanceUrl" />
+            </label>
+
+            <label class="fld">
+                Número eSIM Dedicado Hako (Nunca usar número pessoal)
+                <input @bind="Store.EvolutionNumeroDedicado" />
+            </label>
+        </div>
+
+        <div class="grid-card" style="padding:20px;display:flex;flex-direction:column;gap:12px">
+            <h3 style="margin:0;font-size:16px;font-family:Georgia,serif">Mini-CMS da Landing Page (`/api/public/stats`)</h3>
+            <small class="muted">Números de prova social exibidos publicamente na Landing Page da Hako Interiores.</small>
+
+            <label class="fld">
+                Serviços Entregues (Prova Social)
+                <input type="number" min="1" @bind="Store.LpServicosEntregues" />
+            </label>
+
+            <label class="fld">
+                Anos de Mercado
+                <input type="number" min="1" @bind="Store.LpAnosMercado" />
+            </label>
+
+            <label class="fld">
+                Nota Média de Avaliação (Clientes)
+                <input @bind="Store.LpNotaMedia" />
+            </label>
+
+            <div style="background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;justify-content:space-around;text-align:center">
+                <div>
+                    <strong style="font-size:20px;font-family:Georgia,serif;color:var(--accent)">+@Store.LpServicosEntregues</strong>
+                    <div class="muted" style="font-size:11px">Projetos Entregues</div>
+                </div>
+                <div>
+                    <strong style="font-size:20px;font-family:Georgia,serif;color:var(--accent)">@Store.LpAnosMercado anos</strong>
+                    <div class="muted" style="font-size:11px">de Experiência</div>
+                </div>
+                <div>
+                    <strong style="font-size:20px;font-family:Georgia,serif;color:var(--accent)">★ @Store.LpNotaMedia</strong>
+                    <div class="muted" style="font-size:11px">Avaliação Média</div>
+                </div>
+            </div>
+
+            <div class="actions end" style="margin-top:6px">
+                <button type="button" class="btn primary" @onclick="SalvarIntegracoes">
+                    ✓ Salvar Integrações & Mini-CMS
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal Criar/Editar Tipo de Serviço -->
+@if (ShowTipoModal && EditingTipo is not null)
+{
+    <div class="modal-back" @onclick="() => ShowTipoModal = false">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h3>@(IsNewTipo ? "Novo Tipo de Serviço" : $"Editar Tipo #{EditingTipo.Id}")</h3>
+
+            <label class="fld">
+                Nome do Tipo de Serviço *
+                <input @bind="TipoNome" placeholder="Ex.: Reforma Completa de Cozinha" />
+            </label>
+
+            <div class="fld-row">
+                <label class="fld">
+                    Categoria *
+                    <select @bind="TipoCategoria">
+                        <option value="mobiliario">Mobiliário / Marcenaria</option>
+                        <option value="alvenaria">Alvenaria / Reforma Civil</option>
+                    </select>
+                </label>
+
+                <label class="fld">
+                    Status
+                    <select value='@(TipoAtivo ? "ativo" : "inativo")' @onchange='e => TipoAtivo = (e.Value?.ToString() == "ativo")'>
+                        <option value="ativo">Ativo</option>
+                        <option value="inativo">Inativo</option>
+                    </select>
+                </label>
+            </div>
+
+            <div class="actions end">
+                <button type="button" class="btn" @onclick="() => ShowTipoModal = false">Cancelar</button>
+                <button type="button" class="btn primary" @onclick="SalvarTipo">Salvar</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal Criar/Editar Etapa Padrão (Pai ou Sub-tarefa) -->
+@if (ShowEtapaModal && EditingTipoForEtapa is not null && EditingEtapa is not null)
+{
+    var tarefasPaiDisponiveis = EditingTipoForEtapa.EtapasPadrao.Where(e => e.ParentId == null && e.Id != EditingEtapa.Id).ToList();
+    <div class="modal-back" @onclick="() => ShowEtapaModal = false">
+        <div class="modal" style="width:min(480px,95vw)" @onclick:stopPropagation="true">
+            <h3>@(IsNewEtapa ? "Nova Etapa / Sub-tarefa Padrão" : $"Editar Etapa #{EditingEtapa.Id}")</h3>
+
+            <label class="fld">
+                Nome da Etapa / Tarefa *
+                <input @bind="EtapaNome" placeholder="Ex.: Plano de corte e usinagem MDF" />
+            </label>
+
+            <div class="fld-row">
+                <label class="fld">
+                    Hierarquia (Tarefa Pai)
+                    <select value="@(EtapaParentId ?? 0)" @onchange="e => EtapaParentId = int.TryParse(e.Value?.ToString(), out var pid) && pid > 0 ? pid : null">
+                        <option value="0">— Tarefa Principal (Topo) —</option>
+                        @foreach (var p in tarefasPaiDisponiveis)
+                        {
+                            <option value="@p.Id">↳ Sub-tarefa de: @p.Nome</option>
+                        }
+                    </select>
+                </label>
+
+                <label class="fld">
+                    Ordem
+                    <input type="number" min="1" max="50" @bind="EtapaOrdem" />
+                </label>
+            </div>
+
+            <div class="fld-row">
+                <label class="fld">
+                    Duração Padrão (Dias) *
+                    <input type="number" min="1" max="180" @bind="EtapaDuracaoDias" />
+                </label>
+
+                @if (EtapaParentId == null)
+                {
+                    <label class="fld">
+                        Depende de (Predecessora)
+                        <select value="@(EtapaPredecessoraId ?? 0)" @onchange="e => EtapaPredecessoraId = int.TryParse(e.Value?.ToString(), out var prid) && prid > 0 ? prid : null">
+                            <option value="0">— Sem dependência —</option>
+                            @foreach (var p in tarefasPaiDisponiveis)
+                            {
+                                <option value="@p.Id">@p.Ordem. @p.Nome</option>
+                            }
+                        </select>
+                    </label>
+                }
+            </div>
+
+            <div class="actions end">
+                <button type="button" class="btn" @onclick="() => ShowEtapaModal = false">Cancelar</button>
+                <button type="button" class="btn primary" @onclick="SalvarEtapaPadrao">Salvar Etapa</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Modal Criar/Editar Usuário Interno -->
+@if (ShowUserModal && EditingUser is not null)
+{
+    <div class="modal-back" @onclick="() => ShowUserModal = false">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h3>@(IsNewUser ? "Novo Usuário Interno" : $"Editar Usuário: {EditingUser.Login}")</h3>
+
+            <div class="fld-row">
+                <label class="fld">
+                    Login *
+                    <input @bind="UserLogin" placeholder="ex.: comercial2" />
+                </label>
+                <label class="fld">
+                    Role (Perfil) *
+                    <select @bind="UserRole">
+                        <option value="Admin">Admin</option>
+                        <option value="Comercial">Comercial</option>
+                        <option value="Financeiro">Financeiro</option>
+                        <option value="Serviços">Serviços</option>
+                    </select>
+                </label>
+            </div>
+
+            <label class="fld">
+                Nome Completo *
+                <input @bind="UserNome" placeholder="Nome completo do colaborador" />
+            </label>
+
+            <label class="fld">
+                E-mail *
+                <input type="email" @bind="UserEmail" placeholder="usuario@hakointeriores.com.br" />
+            </label>
+
+            <label class="fld">
+                Status de Acesso
+                <select value='@(UserAtivo ? "ativo" : "inativo")' @onchange='e => UserAtivo = (e.Value?.ToString() == "ativo")'>
+                    <option value="ativo">Ativo</option>
+                    <option value="inativo">Inativo (Acesso bloqueado)</option>
+                </select>
+            </label>
+
+            <div class="actions end">
+                <button type="button" class="btn" @onclick="() => ShowUserModal = false">Cancelar</button>
+                <button type="button" class="btn primary" @onclick="SalvarUsuario">Salvar Usuário</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private int Tab = 0;
+    private int SelectedTipoId = 1;
+    private string ToastMsg = "";
+
+    // Modal Tipo de Serviço
+    private bool ShowTipoModal;
+    private bool IsNewTipo;
+    private TipoServicoItem? EditingTipo;
+    private string TipoNome = "";
+    private string TipoCategoria = "mobiliario";
+    private bool TipoAtivo = true;
+
+    // Modal Etapa Padrão
+    private bool ShowEtapaModal;
+    private bool IsNewEtapa;
+    private TipoServicoItem? EditingTipoForEtapa;
+    private TemplateEtapaItem? EditingEtapa;
+    private string EtapaNome = "";
+    private int? EtapaParentId;
+    private int? EtapaPredecessoraId;
+    private int EtapaOrdem = 1;
+    private int EtapaDuracaoDias = 5;
+
+    // Modal Usuário
+    private bool ShowUserModal;
+    private bool IsNewUser;
+    private UsuarioSistema? EditingUser;
+    private string UserLogin = "";
+    private string UserNome = "";
+    private string UserEmail = "";
+    private string UserRole = "Comercial";
+    private bool UserAtivo = true;
+
+    private record PermModuleInfo(string Resource, string Label);
+    private static readonly PermModuleInfo[] PermissionModules =
+    [
+        new("clientes", "Clientes & CRM (Abas Dados/Docs/Portal/Msgs)"),
+        new("funil", "Funil Comercial & Negociações/Orçamentos"),
+        new("contratos", "Contratos (Modelos & Emitidos)"),
+        new("servicos", "Serviços, Kanban & Cronograma (Gantt)"),
+        new("financeiro", "Financeiro (Geral + Abas Financeiro de Cliente/Serviço)"),
+        new("equipe", "Equipe (Funcionários, Colaboradores e Parceiros)"),
+        new("config", "Configurações do Sistema & RBAC")
+    ];
+
+    private static string GetRoleAccessLevel(string role, string resource)
+    {
+        var perms = MockErpStore.RolePermissions.GetValueOrDefault(role) ?? [];
+        if (perms.Contains($"{resource}.*") || perms.Contains($"{resource}.edit"))
+            return "Ver + Editar";
+        if (perms.Contains($"{resource}.view"))
+            return "Somente Leitura";
+        return "Sem acesso";
+    }
+
+    private void AbrirNovoTipo()
+    {
+        IsNewTipo = true;
+        EditingTipo = new TipoServicoItem();
+        TipoNome = "";
+        TipoCategoria = "mobiliario";
+        TipoAtivo = true;
+        ShowTipoModal = true;
+    }
+
+    private void AbrirEditarTipo(TipoServicoItem t)
+    {
+        IsNewTipo = false;
+        EditingTipo = t;
+        TipoNome = t.Nome;
+        TipoCategoria = t.Categoria;
+        TipoAtivo = t.Ativo;
+        ShowTipoModal = true;
+    }
+
+    private void SalvarTipo()
+    {
+        if (EditingTipo is null || string.IsNullOrWhiteSpace(TipoNome)) return;
+        EditingTipo.Nome = TipoNome.Trim();
+        EditingTipo.Categoria = TipoCategoria;
+        EditingTipo.Ativo = TipoAtivo;
+
+        if (IsNewTipo)
+        {
+            EditingTipo.Id = Store.TiposServico.Count > 0 ? Store.TiposServico.Max(x => x.Id) + 1 : 1;
+            Store.TiposServico.Add(EditingTipo);
+            SelectedTipoId = EditingTipo.Id;
+        }
+
+        ShowTipoModal = false;
+        ToastMsg = $"Tipo de serviço '{EditingTipo.Nome}' salvo com sucesso.";
+        Store.NotifyStateChanged();
+    }
+
+    private void AbrirNovaEtapaPadrao(TipoServicoItem tipo, int? parentId)
+    {
+        IsNewEtapa = true;
+        EditingTipoForEtapa = tipo;
+        EditingEtapa = new TemplateEtapaItem();
+        EtapaNome = "";
+        EtapaParentId = parentId;
+        EtapaPredecessoraId = null;
+        var irmas = tipo.EtapasPadrao.Where(x => x.ParentId == parentId).ToList();
+        EtapaOrdem = irmas.Count + 1;
+        EtapaDuracaoDias = 5;
+        ShowEtapaModal = true;
+    }
+
+    private void AbrirEditarEtapaPadrao(TipoServicoItem tipo, TemplateEtapaItem etapa)
+    {
+        IsNewEtapa = false;
+        EditingTipoForEtapa = tipo;
+        EditingEtapa = etapa;
+        EtapaNome = etapa.Nome;
+        EtapaParentId = etapa.ParentId;
+        EtapaPredecessoraId = etapa.PredecessoraId;
+        EtapaOrdem = etapa.Ordem;
+        EtapaDuracaoDias = etapa.DuracaoDias;
+        ShowEtapaModal = true;
+    }
+
+    private void SalvarEtapaPadrao()
+    {
+        if (EditingTipoForEtapa is null || EditingEtapa is null || string.IsNullOrWhiteSpace(EtapaNome)) return;
+        EditingEtapa.Nome = EtapaNome.Trim();
+        EditingEtapa.ParentId = EtapaParentId;
+        EditingEtapa.PredecessoraId = EtapaParentId == null ? EtapaPredecessoraId : null;
+        EditingEtapa.Ordem = Math.Max(1, EtapaOrdem);
+        EditingEtapa.DuracaoDias = Math.Max(1, EtapaDuracaoDias);
+
+        if (IsNewEtapa)
+        {
+            var maxId = Store.TiposServico.SelectMany(t => t.EtapasPadrao).Select(e => e.Id).DefaultIfEmpty(100).Max();
+            EditingEtapa.Id = maxId + 1;
+            EditingTipoForEtapa.EtapasPadrao.Add(EditingEtapa);
+        }
+
+        ShowEtapaModal = false;
+        ToastMsg = $"Etapa padrão '{EditingEtapa.Nome}' atualizada no template '{EditingTipoForEtapa.Nome}'.";
+        Store.NotifyStateChanged();
+    }
+
+    private void SalvarConfigSistema()
+    {
+        ToastMsg = "Parâmetros da Empresa, Oficina e Alertas de Prazo atualizados em tempo real.";
+        Store.NotifyStateChanged();
+    }
+
+    private void SalvarIntegracoes()
+    {
+        ToastMsg = "Configurações de Assinatura, Evolution API e Mini-CMS da Landing Page salvas.";
+        Store.NotifyStateChanged();
+    }
+
+    private void AbrirNovoUsuario()
+    {
+        IsNewUser = true;
+        EditingUser = new UsuarioSistema();
+        UserLogin = "";
+        UserNome = "";
+        UserEmail = "";
+        UserRole = "Comercial";
+        UserAtivo = true;
+        ShowUserModal = true;
+    }
+
+    private void AbrirEditarUsuario(UsuarioSistema u)
+    {
+        IsNewUser = false;
+        EditingUser = u;
+        UserLogin = u.Login;
+        UserNome = u.Nome;
+        UserEmail = u.Email;
+        UserRole = u.Role;
+        UserAtivo = u.Ativo;
+        ShowUserModal = true;
+    }
+
+    private void SalvarUsuario()
+    {
+        if (EditingUser is null || string.IsNullOrWhiteSpace(UserLogin) || string.IsNullOrWhiteSpace(UserNome)) return;
+        EditingUser.Login = UserLogin.Trim();
+        EditingUser.Nome = UserNome.Trim();
+        EditingUser.Email = UserEmail.Trim();
+        EditingUser.Role = UserRole;
+        EditingUser.Ativo = UserAtivo;
+
+        if (IsNewUser)
+        {
+            EditingUser.Id = Store.Usuarios.Count > 0 ? Store.Usuarios.Max(x => x.Id) + 1 : 1;
+            Store.Usuarios.Add(EditingUser);
+        }
+
+        ShowUserModal = false;
+        ToastMsg = $"Usuário '{EditingUser.Nome}' ({EditingUser.Role}) salvo.";
+        Store.NotifyStateChanged();
+    }
+}
