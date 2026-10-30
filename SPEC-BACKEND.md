@@ -204,7 +204,9 @@ Campos: id, nome, celular, email?, enderecoObra?, cpfCnpj? (só cliente — LGPD
 
 Propósito: funil **básico por design** — visualização fácil e rápida da situação; objetivo é ajudar a converter lead em cliente, não ser um CRM pesado.
 
-Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociações (1ª obra, obra nova, reforma futura).
+Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociações **simultâneas** — um lead/cliente pode ter **vários cards ativos no funil ao mesmo tempo**, um por serviço em negociação.
+- **Separação por serviço é obrigatória:** serviços distintos negociam-se em cards separados mesmo quando se relacionam na prática — ex.: marcenaria (armários) e reforma da cozinha são duas negociações independentes, ainda que os armários sejam para a cozinha em reforma
+- Quando uma das negociações vira Ganho e a pessoa vira `cliente`, os **demais cards ativos** dela passam a exibir o badge ★ cliente (e o toggle/filtro os trata como recorrência)
 - **Status da Negociacao:** `em_andamento` | `cancelada` | `fechada` (independente do estágio/coluna)
 - Pessoa `tipo=lead` vira `cliente` **somente com negociação fechada E contrato assinado** (entrada na coluna Ganho) — e **nunca retorna a lead**
 - **Ganho ≠ fechada:** o card só entra na coluna Ganho **depois do contrato assinado** — negociação fechada aguardando assinatura permanece na coluna Negociação com status `fechada` e a pessoa **continua lead** até assinar
@@ -212,7 +214,7 @@ Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociaç
 - Cliente existente entrando em nova negociação aparece no board com badge "★ cliente" — mesmo funil, visual distinto
 - **Recorrência:** o funil acompanha também negociação de projetos, obras, reformas e serviços p/ **clientes** (não só conversão de lead) — visualização simples: badge ★ + `tipoServico` no card e **filtro por tipo** (projeto|obra|reforma|serviço) + toggle "só leads / só clientes / todos", sem colunas ou boards separados
 - Funil mede conversão em dois níveis: lead→cliente (1ª vez) e proposta→contrato (recorrente)
-- Negociacao: id, pessoaId, estagio, status, tipoServico?, valor?, origem, motivoPerda?, criadoEm, fechadaEm?, ganhoEm? → no Ganho cria Obra (etapas-template)
+- Negociacao: id, pessoaId, estagio, status, tipoServico (obrigatório — o card é por serviço), valor?, origem, motivoPerda?, criadoEm, fechadaEm?, ganhoEm? → no Ganho cria Obra (etapas-template)
 
 ### Clientes — card CRUD (UI)
 - tipo = badge readonly derivado (lead→cliente só via negociação fechada + contrato assinado; carga legada = fase posterior/Admin)
