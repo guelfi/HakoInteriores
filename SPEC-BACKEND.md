@@ -210,3 +210,12 @@ Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociaç
 - cpfCnpj só visível/obrigatório quando tipo=cliente (minimização LGPD em leads)
 - alteração de status no card: select + motivo obrigatório p/ inativo|cancelado
 - bloco "Portal": link /obra/{token} + [Regenerar] + expiração — só cliente existente
+
+### Clientes — card ampliado por ABAS (em discussão, seção ABERTA)
+- Aba1 Dados pessoais: nome*, celular*, tel2?, email?, endereço completo (rua/nº/compl/bairro/cidade/UF/CEP — contrato exige), origem, obs
+- Aba2 Documentos/Contrato: cpf, rg+órgão, estadoCivil?, profissão?, nacionalidade? — alimenta templates; obrigatórios só ao emitir contrato
+- Aba3 Negociações: histórico dos cards do funil da pessoa
+- Aba4 Obras: obras c/ saúde+fase+atalho p/ kanban
+- Aba5 Portal: link token, regenerar, expiração, chamados garantia
+- Status: select ativo|inativo|cancelado + motivo obrigatório (exceto ativo)
+- SEÇÃO CLIENTES NÃO FECHADA — aguarda revisão/abas adicionais; seções revisitáveis durante desenvolvimento
