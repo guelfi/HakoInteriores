@@ -133,3 +133,22 @@ Decisão postergada. `ISignatureProvider`: `ZapSignProvider` (SaaS BR ~R$1-2/doc
 | 4 | Financeiro completo (receber+pagar+comissões) + margem por obra |
 | 5 | Contratos + templates + PDF + ISignatureProvider (Manual → provider real) |
 | 6 | Câmeras/snapshots, garantia/pós-venda, dashboard, antes-e-depois |
+
+## API pública — LP vira mini-CMS (brainstorm erp-roadmap)
+
+**Leads da LP → funil (decisão aprovada):** o formulário da LP posta direto no ERP — lead nasce no funil estágio "Novo", não só no WhatsApp.
+
+```
+POST /api/public/leads   { nome, telefone, mensagem, origem:"lp" }
+  → anti-spam: honeypot + rate limit por IP + validação server-side
+  → cria Lead (funil "Novo") + opcional: dispara notificação p/ comercial
+GET  /api/public/stats   → provas sociais da LP (obras entregues, tempo mercado, nota)
+GET  /api/public/conteudo → seções editáveis da LP (serviços, portfólio, textos) — mini-CMS
+```
+
+**WhatsApp — Evolution API (não Meta oficial):** custo da API oficial adiado (decisão pendente com proprietário). Evolution API já está instalada na OCI (mesma infra do Batuara) e acessível via túnel SSH. Usos previstos: notificar comercial quando entra lead da LP; avisos ao cliente como CANAL AUXILIAR — o portal segue sendo a fonte da verdade.
+- **Número dedicado**: novo eSIM exclusivo para a instância Evolution do Hako — nunca usar número pessoal (risco de banimento pela Meta)
+- Não-usar Business Meta por ora (experiência Batuara); decisão de migração futura fica em aberto
+- Segregação: conexão com Evolution via serviço interno (`IWhatsAppNotifier`) — nenhum endpoint do ERP expõe a Evolution diretamente
+
+**Ordem sugerida de implementação:** POST /api/public/leads primeiro (destrava valor imediato: form da LP → funil), notificação WhatsApp depois.
