@@ -60,6 +60,8 @@ Claims por role: Admin→todas; Comercial→`clientes.*, funil.*, contratos.*, o
 **Padrão grid (CRUD):** toolbar com `[+ Novo]` à esquerda e paginação ⏮ ◀ ▶ ⏭ à direita; clicar na linha abre o mesmo card-modal da inclusão (novo → [Salvar][Cancelar]; existente → [Salvar][Inativar|Cancelar…][Voltar]). **Nunca há exclusão de dados** — só inativação ou cancelamento; cancelamentos exigem justificativa (lançamentos, obras, contratos). Usuário logado fica na topbar (à direita) com dropdown: *Meu perfil* (modal: usuário, nome completo, senha ×2 com regras) e *Sair*. Tema claro/escuro no rodapé da sidebar. Boards (funil/kanban) com drag&drop entre colunas.
 
 - **Clientes** — colunas: status (Lead|Cliente) + ativo/inativo, ícone de obra (em andamento 🛠 / entregue ✓ / cancelada ✗, +contador se >1), badge de atraso se houver etapa vermelha, nome, celular (contato direto sem abrir card)
+  - **Pesquisa:** campo de busca na toolbar, entre `[+ Novo]` e a paginação — busca por nome, celular ou email (sem abrir card)
+  - **Filtro:** dropdown/painel ao lado da busca com opções: tipo (todos | leads | clientes), status (ativo | inativo | cancelado | suspenso), origem (lp | instagram | indicacao | parceiro | outro), com obra em andamento, com etapa atrasada (badge 🔴), com/sem obras — combináveis entre si e com a busca
 - **Equipe** (unificada) — Funcionários + Colaboradores + Parceiros num único grid, badge de perfil por linha; comissão% só para parceiros
 - **Financeiro** — grid único pagar+receber: ícone direção (▲ pagar / ▼ receber), status (pago ✓ / pendente / vencido 🔴), descrição, beneficiário/cliente, valor, vencimento
 - **Contratos** — abas: *Modelos* (ContratoTemplates) e *Emitidos* (contratos por cliente com status enviado/aguardando/assinado)
