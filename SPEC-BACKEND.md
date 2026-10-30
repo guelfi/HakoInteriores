@@ -80,7 +80,12 @@ Users (Identity) + Roles
 TiposServico:    id, nome, ativo
 TemplateEtapa:   id, tipoServicoId, nome, ordem, duracaoDias   → obra nasce com etapas+prazos prontos
 Clientes:        id, nome, tel, email, endereco, status(prospecto|ativo|cancelado), origem, portalToken
-Leads (funil):   Novo → Contato → Orçamento → Contrato enviado → Ganho(vira cliente+obra) | Perdido(motivo)
+Leads (funil):   Novo → Contato → Visita/Medição → Orçamento → Negociação → Ganho(vira cliente+obra) | Perdido(motivo)
+Negociacoes:     id, pessoaId, estagio, status(em_andamento|cancelada|fechada), tipoServicoId,
+                 valor?, origem, motivoPerda?, criadoEm, fechadaEm?, ganhoEm?
+Visitas:         id, negociacaoId, dataAgendada, dataRealizada?, status(agendada|realizada|cancelada), observacoes?
+Orcamentos:      id, negociacaoId, versao, valor, status(rascunho|enviado|aceito|recusado|substituido),
+                 arquivo?, enviadoEm?, respondidoEm?
 Colaboradores:   id, nome, funcao, tel, ativo
 Parceiros:       id, nome, tipo(arquiteto|engenheiro|fornecedor|prestador), contato, comissaoPct, ativo
 Obras:           id, clienteId, tipoServicoId, status(andamento|encerrada|cancelada),
@@ -163,7 +168,7 @@ Cada widget vira dado de API; resposta filtrada pela permissão do usuário (401
 
 ```
 GET /api/dashboard/resumo → {
-  leadsNovos: int,        // funil.view — Leads novos (site) + orçamentos em aberto
+  leadsNovos: int,        // funil.view — Leads novos (site) + orçamentos em aberto (Orcamento.status=enviado)
   clientesAtivos: int,    // clientes.view — Clientes ativos + novos no mês
   obrasAndamento: int,    // obras.view — Obras em andamento + entregues no mês
   etapasAtrasadas: int,   // obras.view — Etapas atrasadas + críticas (vermelhas)
@@ -222,6 +227,18 @@ Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociaç
 - Funil mede conversão em dois níveis: lead→cliente (1ª vez) e proposta→contrato (recorrente)
 - Negociacao: id, pessoaId, estagio, status, tipoServico (obrigatório — o card é por serviço), valor?, origem, motivoPerda?, criadoEm, fechadaEm?, ganhoEm? → no Ganho cria Obra (etapas-template)
 
+### Artefatos da negociação (Visita e Orçamento são registros, não só colunas)
+
+- `Visita`: id, negociacaoId, dataAgendada, dataRealizada?, status(`agendada`|`realizada`|`cancelada`), observacoes?, criadoEm
+- `Orcamento`: id, negociacaoId, versao(1,2,3…), valor, status(`rascunho`|`enviado`|`aceito`|`recusado`|`substituido`), arquivo?(PDF), enviadoEm?, respondidoEm?, criadoEm
+- Ambos vinculados a **uma** negociação (nunca soltos na pessoa); cada evento (visita agendada/realizada, orçamento criado/enviado/aceito/recusado) entra na timeline da Aba3
+- **Semântica das colunas** (o estágio reflete o estado dos artefatos; avanço continua manual via drag&drop, não automação):
+  - `Visita/Medição` = visita agendada/realizada e nenhum orçamento enviado
+  - `Orçamento` = orçamento `enviado` aguardando resposta
+  - `Negociação` = orçamento em ajuste/aceito, aguardando fechamento + contrato
+- **Cancelar → reabrir (cadeia de versões):** a nova negociação referencia a anterior; o novo orçamento segue a `versao` da cadeia e o antigo fica `substituido` — histórico completo na Aba3
+- Funil segue **read-only sem exceções:** nenhuma ação de visita/orçamento acontece pelo board — tudo na Aba3 do cliente
+
 ### Clientes — card CRUD (UI)
 - tipo = badge readonly derivado (lead→cliente só via negociação fechada + contrato assinado; carga legada = fase posterior/Admin)
 - obrigatórios: nome*, celular* (máscara); opcionais: email, enderecoObra, origem, observações
@@ -232,7 +249,8 @@ Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociaç
 ### Clientes — card ampliado por ABAS (em discussão, seção ABERTA)
 - Aba1 Dados pessoais: nome*, celular*, tel2?, email?, endereço completo (rua/nº/compl/bairro/cidade/UF/CEP — contrato exige), origem, obs
 - Aba2 Documentos/Contrato: cpf, rg+órgão, estadoCivil?, profissão?, nacionalidade? — alimenta templates; obrigatórios só ao emitir contrato
-- Aba3 Negociações: timeline auditável da pessoa — todos os cards do funil + cada evento (criação, avanço de estágio, cancelamento+motivo, reabertura vinculada, fechamento, ganho) com data e usuário
+- Aba3 Negociações: timeline auditável da pessoa — todos os cards do funil + cada evento (criação, avanço de estágio, visita agendada/realizada, orçamento criado/enviado/aceito/recusado, cancelamento+motivo, reabertura vinculada, fechamento, ganho) com data e usuário
+  - **Ações operacionais na Aba3** (aqui, nunca no funil): `[Agendar visita]`, `[Registrar visita realizada]` (data+observações), `[Novo orçamento]` / `[Enviar orçamento]` (valor + upload PDF + marcar enviado/aceito/recusado) — sempre no contexto de uma negociação da pessoa (1 ativa → pré-selecionada; N ativas → escolhe o card)
 - Aba4 Obras: obras c/ saúde+fase+atalho p/ kanban
 - Aba5 Portal: link token, regenerar, expiração, chamados garantia
 - Status: select ativo|inativo|cancelado + motivo obrigatório (exceto ativo)
