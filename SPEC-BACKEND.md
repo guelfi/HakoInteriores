@@ -195,3 +195,11 @@ POST   /api/clientes/{id}/portal-token/rotate
 ```
 
 Campos: id, nome, celular, email?, enderecoObra?, cpfCnpj? (só cliente — LGPD), tipo, status, origem(lp|instagram|indicacao|parceiro|outro), portalToken, criadoEm, alteradoEm, statusEm, motivoStatus?
+
+## Funil — modelo por NEGOCIAÇÃO (preview aprovado no brainstorm)
+
+Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociações (1ª obra, obra nova, reforma futura).
+- Pessoa `tipo=lead` só na 1ª negociação; ao Ganho+contrato assinado → vira `cliente` e **nunca retorna a lead**
+- Cliente existente entrando em nova negociação aparece no board com badge "★ cliente" — mesmo funil, visual distinto
+- Funil mede conversão em dois níveis: lead→cliente (1ª vez) e proposta→contrato (recorrente)
+- Negociacao: id, pessoaId, estagio, tipoServico?, valor?, origem, motivoPerda?, criadoEm, ganhoEm? → no Ganho cria Obra (etapas-template)
