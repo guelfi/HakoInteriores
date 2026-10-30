@@ -204,8 +204,8 @@ Propósito: funil **básico por design** — visualização fácil e rápida da 
 
 Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociações (1ª obra, obra nova, reforma futura).
 - **Status da Negociacao:** `em_andamento` | `cancelada` | `fechada` (independente do estágio/coluna)
-- Pessoa `tipo=lead` vira `cliente` **quando a negociação é fechada** (acordo comercial) — e **nunca retorna a lead**
-- **Ganho ≠ fechada:** o card só entra na coluna Ganho **depois do contrato assinado** — negociação fechada aguardando assinatura permanece na coluna Negociação com status `fechada`
+- Pessoa `tipo=lead` vira `cliente` **somente com negociação fechada E contrato assinado** (entrada na coluna Ganho) — e **nunca retorna a lead**
+- **Ganho ≠ fechada:** o card só entra na coluna Ganho **depois do contrato assinado** — negociação fechada aguardando assinatura permanece na coluna Negociação com status `fechada` e a pessoa **continua lead** até assinar
 - Cancelada: sai do fluxo ativo p/ Perdido/arquivo com motivoPerda obrigatório
 - Cliente existente entrando em nova negociação aparece no board com badge "★ cliente" — mesmo funil, visual distinto
 - **Recorrência:** o funil acompanha também negociação de projetos, obras, reformas e serviços p/ **clientes** (não só conversão de lead) — visualização simples: badge ★ + `tipoServico` no card e **filtro por tipo** (projeto|obra|reforma|serviço) + toggle "só leads / só clientes / todos", sem colunas ou boards separados
@@ -213,7 +213,7 @@ Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociaç
 - Negociacao: id, pessoaId, estagio, status, tipoServico?, valor?, origem, motivoPerda?, criadoEm, fechadaEm?, ganhoEm? → no Ganho cria Obra (etapas-template)
 
 ### Clientes — card CRUD (UI)
-- tipo = badge readonly derivado (lead→cliente só via negociação fechada; carga legada = fase posterior/Admin)
+- tipo = badge readonly derivado (lead→cliente só via negociação fechada + contrato assinado; carga legada = fase posterior/Admin)
 - obrigatórios: nome*, celular* (máscara); opcionais: email, enderecoObra, origem, observações
 - cpfCnpj só visível/obrigatório quando tipo=cliente (minimização LGPD em leads)
 - alteração de status no card: select + motivo obrigatório p/ inativo|cancelado
