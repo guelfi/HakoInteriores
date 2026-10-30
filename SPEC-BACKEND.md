@@ -221,3 +221,5 @@ Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociaç
 - SEÇÃO CLIENTES NÃO FECHADA — aguarda revisão/abas adicionais; seções revisitáveis durante desenvolvimento
 - Aba6 Contratos: contratos emitidos p/ a pessoa + status + obra associada a cada contrato
 - Aba7 Financeiro: budget total (soma valorContrato das obras) + extrato de recebimentos/pagamentos ligados ao cliente (parcelas por obra, status pago|pendente|vencido, saldo)
+- Aba Portal do cliente: gerencia acesso /obra/{token} (link, regerar, expiração, chamados garantia) — refinar em dev
+- Aba8 Mensagens (CRM): histórico unificado de conversas com o cliente — envio/recebimento WhatsApp via Evolution API hoje, atrás de interface IMessagingProvider p/ migrar p/ Meta Business oficial sem trocar a UI; guardar também notas internas da equipe
