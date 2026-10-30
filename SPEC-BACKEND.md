@@ -225,3 +225,8 @@ Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociaç
 - Aba8 Mensagens (CRM): histórico unificado de conversas com o cliente — envio/recebimento WhatsApp via Evolution API hoje, atrás de interface IMessagingProvider p/ migrar p/ Meta Business oficial sem trocar a UI; guardar também notas internas da equipe
 - Status SUSPENSO: aplica-se a Obra (motivo legal/ex.: embargada, inadimplência, pedido do cliente) — obra suspensa pausa etapas/kanban e prazos; cliente pode refletir badge derivado da obra suspensa, mas suspensão é da obra, não da pessoa; retomada exige motivo+data
 - Suspensão em DOIS níveis: Obra (motivo próprio) OU Cliente (ex.: desacordo comercial) — suspender o cliente suspende TODAS as suas obras em cascata (badge + pausa de prazos/kanban); retomada também em cascata; sempre com motivo+data auditável
+
+## Cronograma (novo item do sidebar — Gantt estilo MS Project)
+- Nova seção "Cronograma": gráfico de Gantt das ObraEtapas — mesmas datas do Kanban (dtInicioPrevista/dtPrevista/dtRealizada), uma linha por etapa, barras coloridas pela mesma saúde de prazo, marco de hoje, zoom semana/mês
+- Opcional fase posterior: dependências entre etapas (predecessora), baseline previsto vs real, visão multi-obra (linha por obra)
+- Endpoint: GET /api/obras/{id}/cronograma → etapas ordenadas com datas e saúde; drag de barra = ajuste de dtPrevista (perm obras.edit)
