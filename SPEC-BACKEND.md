@@ -215,6 +215,7 @@ Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociaç
 - **Ganho ≠ fechada:** o card só entra na coluna Ganho **depois do contrato assinado** — negociação fechada aguardando assinatura permanece na coluna Negociação com status `fechada` e a pessoa **continua lead** até assinar
 - Cancelada: sai do fluxo ativo p/ Perdido/arquivo com motivoPerda obrigatório
 - **Cancelar → reabrir:** negociação que esfria (ex.: orçamento recusado) é cancelada e, **a partir do cancelamento**, abre-se uma nova negociação para a mesma pessoa — ex.: novo orçamento, ou orçamento reajustado após nova medição. O cancelamento oferece a opção "nova negociação" já vinculando a anterior (histórico na Aba3 do cliente); a nova nasce no estágio adequado (ex.: Orçamento ou Visita/Medição), nunca "retrocedendo" o card antigo
+- **Histórico do cliente:** **todo** evento do funil é registrado na timeline da pessoa (Aba3) — criação do card, cada avanço de estágio, cancelamento + motivoPerda, reabertura vinculada, fechamento e contrato assinado/ganho — sempre com data e usuário responsável; nada no funil acontece sem rastro auditável
 - Cliente existente entrando em nova negociação aparece no board com badge "★ cliente" — mesmo funil, visual distinto
 - **Recorrência:** o funil acompanha também negociação de projetos, obras, reformas e serviços p/ **clientes** (não só conversão de lead) — visualização simples: badge ★ + `tipoServico` no card e **filtro por tipo** (projeto|obra|reforma|serviço) + toggle "só leads / só clientes / todos", sem colunas ou boards separados
 - Funil mede conversão em dois níveis: lead→cliente (1ª vez) e proposta→contrato (recorrente)
@@ -230,7 +231,7 @@ Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociaç
 ### Clientes — card ampliado por ABAS (em discussão, seção ABERTA)
 - Aba1 Dados pessoais: nome*, celular*, tel2?, email?, endereço completo (rua/nº/compl/bairro/cidade/UF/CEP — contrato exige), origem, obs
 - Aba2 Documentos/Contrato: cpf, rg+órgão, estadoCivil?, profissão?, nacionalidade? — alimenta templates; obrigatórios só ao emitir contrato
-- Aba3 Negociações: histórico dos cards do funil da pessoa
+- Aba3 Negociações: timeline auditável da pessoa — todos os cards do funil + cada evento (criação, avanço de estágio, cancelamento+motivo, reabertura vinculada, fechamento, ganho) com data e usuário
 - Aba4 Obras: obras c/ saúde+fase+atalho p/ kanban
 - Aba5 Portal: link token, regenerar, expiração, chamados garantia
 - Status: select ativo|inativo|cancelado + motivo obrigatório (exceto ativo)
