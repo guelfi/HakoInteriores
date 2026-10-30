@@ -255,7 +255,7 @@ Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociaç
 | Contato → Visita/Medição | Ao arrastar, **modal de agendamento** — registra a `Visita` (data/obs) na Aba3 do cliente; sem visita agendada, o card não avança |
 | Visita/Medição → Orçamento | Ao arrastar, **modal de orçamento** — registra/anexa o orçamento enviado (valor + PDF) na Aba3; sem orçamento `enviado`, o card não avança |
 | Orçamento → Negociação | Ao arrastar, **modal de contrato** — exige confirmar/vincular o **contrato enviado** p/ assinatura; sem contrato enviado, o card não avança |
-| Negociação → Ganho | Negociação `fechada` + **contrato assinado** |
+| Negociação → Ganho | Ao arrastar, **modal de fechamento** — exige confirmar que o contrato foi **enviado E assinado** pelo lead/cliente (vincular contrato `assinado`); sem contrato assinado, o card não avança |
 | Qualquer → Perdido | Cancelamento com `motivoPerda` |
 
 **Avanço amarrado à ação:** mover o card no funil **sempre abre o modal da ação correspondente**, que grava o artefato na Aba3 (agenda de visitas, orçamentos, contrato) e na timeline — o board não edita dados da pessoa, mas o avanço de estágio **exige** o registro do artefato. Sem preencher o modal, o card volta à coluna de origem (não avança).
