@@ -221,6 +221,11 @@ Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociaç
 - Pessoa `tipo=lead` vira `cliente` **somente com negociação fechada E contrato assinado** (entrada na coluna Ganho) — e **nunca retorna a lead**
 - **Ganho ≠ fechada:** o card só entra na coluna Ganho **depois do contrato assinado** — negociação fechada aguardando assinatura permanece na coluna Negociação com status `fechada` e a pessoa **continua lead** até assinar
 - Cancelada: sai do fluxo ativo p/ Perdido/arquivo com motivoPerda obrigatório
+- **motivoPerda (categoria + submotivo):**
+  - `desacordo_comercial` → submotivo: `valor` | `prazo` | `ambos` | `outro`
+  - `fechou_concorrencia` (fechou com outra empresa) → submotivo: `valor` | `prazo` | `ambos` | `outro`
+  - `sem_resposta` (lead/cliente não responde aos contatos realizados) — sem submotivo
+  - Modelo: Negociacao ganha `motivoPerda` + `submotivoPerda?`; "outro" exige observação livre
 - **Cancelar → reabrir:** negociação que esfria (ex.: orçamento recusado) é cancelada e, **a partir do cancelamento**, abre-se uma nova negociação para a mesma pessoa — ex.: novo orçamento, ou orçamento reajustado após nova medição. O cancelamento oferece a opção "nova negociação" já vinculando a anterior (histórico na Aba3 do cliente); a nova nasce no estágio adequado (ex.: Orçamento ou Visita/Medição), nunca "retrocedendo" o card antigo
 - **Histórico do cliente:** **todo** evento do funil é registrado na timeline da pessoa (Aba3) — criação do card, cada avanço de estágio, cancelamento + motivoPerda, reabertura vinculada, fechamento e contrato assinado/ganho — sempre com data e usuário responsável; nada no funil acontece sem rastro auditável
 - **Período:** colunas ativas (Novo→Negociação) são **atemporais** — card em andamento nunca some por idade (alerta visual "⚠ parado há X dias" em vez disso); **Ganho e Perdido exibem só o período selecionado** na toolbar (padrão: mês vigente; opções: mês anterior | trimestre | ano | tudo) — métricas de conversão usam o mesmo seletor
