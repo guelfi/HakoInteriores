@@ -152,3 +152,23 @@ GET  /api/public/conteudo → seções editáveis da LP (serviços, portfólio, 
 - Segregação: conexão com Evolution via serviço interno (`IWhatsAppNotifier`) — nenhum endpoint do ERP expõe a Evolution diretamente
 
 **Ordem sugerida de implementação:** POST /api/public/leads primeiro (destrava valor imediato: form da LP → funil), notificação WhatsApp depois.
+
+## Dashboard — endpoints (fechado no brainstorm)
+
+Cada widget vira dado de API; resposta filtrada pela permissão do usuário (401/403 se sem claim, nunca dado "escondido"):
+
+```
+GET /api/dashboard/resumo → {
+  leadsNovos: int,        // funil.view — Leads novos (site) + orçamentos em aberto
+  clientesAtivos: int,    // clientes.view — Clientes ativos + novos no mês
+  obrasAndamento: int,    // obras.view — Obras em andamento + entregues no mês
+  etapasAtrasadas: int,   // obras.view — Etapas atrasadas + críticas (vermelhas)
+  faturamentoMes: cents,  // financeiro.view — Faturamento do mês + % vs anterior
+  comissoesPendentes: c., // financeiro.view — Comissões pendentes + nº parceiros
+  receber30d: cents,      // financeiro.view — A receber 30d + nº parcelas
+  pagar30d: cents         // financeiro.view — A pagar 30d + nº parcelas + vencidas
+}
+GET /api/dashboard/obras-por-fase → [ { fase, qtd, pctMedio } ]  // obras.view
+```
+
+Regras: valores monetários em centavos; contagens derivadas das mesmas queries das grids (fonte única); cache curto (30–60s) opcional.
