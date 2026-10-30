@@ -202,7 +202,10 @@ Campos: id, nome, celular, email?, enderecoObra?, cpfCnpj? (só cliente — LGPD
 
 ## Funil — modelo por NEGOCIAÇÃO (preview aprovado no brainstorm)
 
-Propósito: funil **básico por design** — visualização fácil e rápida da situação; objetivo é ajudar a converter lead em cliente, não ser um CRM pesado.
+Propósito: funil **básico por design** — visualização fácil e rápida da situação; objetivo é ajudar a converter lead em cliente, não ser um CRM pesado. **Controle puramente visual dos estágios.**
+
+- **Sem edição pelo funil:** clicar no card não permite alterar nenhuma informação (nome do cliente, detalhes do serviço, valor etc.) — qualquer alteração de dados é feita na seção Clientes (ou Contratos); o funil serve só para ver/mover estágio
+- **Só avança:** card nunca "volta" de fase — Orçamento não retorna a Visita/Medição, Negociação não retorna a Orçamento; drag&drop permitido apenas para colunas à frente (únicas saídas: Ganho ou Perdido/cancelada)
 
 Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociações **simultâneas** — um lead/cliente pode ter **vários cards ativos no funil ao mesmo tempo**, um por serviço em negociação.
 - **Separação por serviço é obrigatória:** serviços distintos negociam-se em cards separados mesmo quando se relacionam na prática — ex.: marcenaria (armários) e reforma da cozinha são duas negociações independentes, ainda que os armários sejam para a cozinha em reforma
