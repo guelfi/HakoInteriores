@@ -51,6 +51,8 @@ Claims por role: Admin→todas; Comercial→`clientes.*, funil.*, contratos.*, o
 
 ## UI/UX do admin — navegação e padrões de tela
 
+**Mobile-first (design system):** toda a UI/UX é pensada **mobile first** — em vários cenários o acesso ao Dashboard será feito **direto da obra**. Três breakpoints de referência: **mobile · tablet · notebook/desktop**. Componentes, grids, cards-modais e boards (funil/kanban) devem funcionar plenamente nos três — ex.: board vira scroll horizontal por coluna no mobile, grid vira lista de cards, modais viram tela cheia. Decisão de design system do projeto, vale para todas as seções.
+
 **Sidebar auto-oculta (sem JS):** colapsada por padrão mostrando só o rail de ícones; expande em overlay no `:hover`; mouse sai sem selecionar → recolhe mantendo a seção ativa; selecionou → navega e recolhe. Item ativo destacado no rail. Mobile: drawer via hambúrguer.
 
 **Seções (topbar exibe o nome da seção ativa):** Dashboard · Clientes · Funil · Obras · Kanban · Financeiro · Contratos · Equipe · Config — cada item filtrado por `perm`; seção sem implementação exibe placeholder com o nome.
@@ -206,6 +208,7 @@ Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociaç
 - **Ganho ≠ fechada:** o card só entra na coluna Ganho **depois do contrato assinado** — negociação fechada aguardando assinatura permanece na coluna Negociação com status `fechada`
 - Cancelada: sai do fluxo ativo p/ Perdido/arquivo com motivoPerda obrigatório
 - Cliente existente entrando em nova negociação aparece no board com badge "★ cliente" — mesmo funil, visual distinto
+- **Recorrência:** o funil acompanha também negociação de projetos, obras, reformas e serviços p/ **clientes** (não só conversão de lead) — visualização simples: badge ★ + `tipoServico` no card e **filtro por tipo** (projeto|obra|reforma|serviço) + toggle "só leads / só clientes / todos", sem colunas ou boards separados
 - Funil mede conversão em dois níveis: lead→cliente (1ª vez) e proposta→contrato (recorrente)
 - Negociacao: id, pessoaId, estagio, status, tipoServico?, valor?, origem, motivoPerda?, criadoEm, fechadaEm?, ganhoEm? → no Ganho cria Obra (etapas-template)
 
