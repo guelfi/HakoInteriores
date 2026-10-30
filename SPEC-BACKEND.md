@@ -245,18 +245,20 @@ Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociaç
   - `Orçamento` = orçamento `enviado` aguardando resposta
   - `Negociação` = orçamento em ajuste/aceito, aguardando fechamento + contrato
 - **Cancelar → reabrir (cadeia de versões):** a nova negociação referencia a anterior; o novo orçamento segue a `versao` da cadeia e o antigo fica `substituido` — histórico completo na Aba3
-- Funil segue **read-only sem exceções:** nenhuma ação de visita/orçamento acontece pelo board — tudo na Aba3 do cliente
+- Funil segue **read-only para dados** (não edita pessoa/serviço/valor pelo board); a **única** interação além de visualizar é o avanço de estágio, que dispara o modal da ação correspondente (grava na Aba3 — ver "Gatilhos de avanço")
 
 ### Gatilhos de avanço (regra de negócio de cada transição — movimento manual, só p/ frente)
 
 | Transição | Gatilho (o que aconteceu no mundo real) |
 |---|---|
 | Novo → Contato | Primeiro contato realizado — ao arrastar, **modal de confirmação obrigatório**: "Confirma que o contato com este lead foi realizado?" |
-| Contato → Visita/Medição | Visita **agendada** (existe `Visita` status `agendada`) |
-| Visita/Medição → Orçamento | Orçamento **enviado** (`Orcamento.status = enviado`) |
-| Orçamento → Negociação | Cliente respondeu: pediu ajuste/negociou valor ou prazo |
+| Contato → Visita/Medição | Ao arrastar, **modal de agendamento** — registra a `Visita` (data/obs) na Aba3 do cliente; sem visita agendada, o card não avança |
+| Visita/Medição → Orçamento | Ao arrastar, **modal de orçamento** — registra/anexa o orçamento enviado (valor + PDF) na Aba3; sem orçamento `enviado`, o card não avança |
+| Orçamento → Negociação | Ao arrastar, **modal de contrato** — exige confirmar/vincular o **contrato enviado** p/ assinatura; sem contrato enviado, o card não avança |
 | Negociação → Ganho | Negociação `fechada` + **contrato assinado** |
 | Qualquer → Perdido | Cancelamento com `motivoPerda` |
+
+**Avanço amarrado à ação:** mover o card no funil **sempre abre o modal da ação correspondente**, que grava o artefato na Aba3 (agenda de visitas, orçamentos, contrato) e na timeline — o board não edita dados da pessoa, mas o avanço de estágio **exige** o registro do artefato. Sem preencher o modal, o card volta à coluna de origem (não avança).
 
 **Regras da coluna Novo e origem dos cards:**
 - Coluna **Novo** recebe **apenas** leads que enviaram mensagem pela **LP** (form do site) — é a única origem que inicia em Novo
