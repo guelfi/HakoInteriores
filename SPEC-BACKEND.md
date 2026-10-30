@@ -172,3 +172,26 @@ GET /api/dashboard/obras-por-fase → [ { fase, qtd, pctMedio } ]  // obras.view
 ```
 
 Regras: valores monetários em centavos; contagens derivadas das mesmas queries das grids (fonte única); cache curto (30–60s) opcional.
+
+## Clientes — modelo e endpoints (brainstorm erp-roadmap)
+
+**Modelo:** tabela única `Pessoas/Clientes` com enums — `tipo: lead|cliente` (cliente = somente quem assinou contrato; promoção automática no Ganho do funil) e `status: ativo|inativo|cancelado`.
+
+**Regras de status:**
+- ativo→inativo: manual a qualquer momento OU automático (job diário) quando sem obras em andamento e última entregue há >90 dias (fim da garantia)
+- cancelado: quando obra em execução é cancelada (justificativa obrigatória) — não retorna a ativo automaticamente
+- lead usa o mesmo enum de status
+
+**Endpoints:**
+```
+GET    /api/clientes?page=1&size=10&q=&tipo=&status= → { items:[{id,nome,celular,tipo,status,
+            obrasAtivas, obraResumo, temAtraso}], total, page, pages }   // paginação offset — casa com o pager ⏮◀▶⏭ da UI; cursor só se volume justificar
+GET    /api/clientes/{id}
+POST   /api/clientes            → criar (lead ou cliente)
+PUT    /api/clientes/{id}       → editar
+POST   /api/clientes/{id}/status → { status, motivo? }  // nunca DELETE; motivo obrigatório p/ inativar/cancelar
+GET    /api/clientes/{id}/obras → resumo p/ ícone+contador do grid
+POST   /api/clientes/{id}/portal-token/rotate
+```
+
+Campos: id, nome, celular, email?, enderecoObra?, cpfCnpj? (só cliente — LGPD), tipo, status, origem(lp|instagram|indicacao|parceiro|outro), portalToken, criadoEm, alteradoEm, statusEm, motivoStatus?
