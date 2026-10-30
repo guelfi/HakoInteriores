@@ -203,3 +203,10 @@ Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociaç
 - Cliente existente entrando em nova negociação aparece no board com badge "★ cliente" — mesmo funil, visual distinto
 - Funil mede conversão em dois níveis: lead→cliente (1ª vez) e proposta→contrato (recorrente)
 - Negociacao: id, pessoaId, estagio, tipoServico?, valor?, origem, motivoPerda?, criadoEm, ganhoEm? → no Ganho cria Obra (etapas-template)
+
+### Clientes — card CRUD (UI)
+- tipo = badge readonly derivado (lead→cliente só via contrato; carga legada = fase posterior/Admin)
+- obrigatórios: nome*, celular* (máscara); opcionais: email, enderecoObra, origem, observações
+- cpfCnpj só visível/obrigatório quando tipo=cliente (minimização LGPD em leads)
+- alteração de status no card: select + motivo obrigatório p/ inativo|cancelado
+- bloco "Portal": link /obra/{token} + [Regenerar] + expiração — só cliente existente
