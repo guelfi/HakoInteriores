@@ -214,6 +214,7 @@ Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociaç
 - Pessoa `tipo=lead` vira `cliente` **somente com negociação fechada E contrato assinado** (entrada na coluna Ganho) — e **nunca retorna a lead**
 - **Ganho ≠ fechada:** o card só entra na coluna Ganho **depois do contrato assinado** — negociação fechada aguardando assinatura permanece na coluna Negociação com status `fechada` e a pessoa **continua lead** até assinar
 - Cancelada: sai do fluxo ativo p/ Perdido/arquivo com motivoPerda obrigatório
+- **Cancelar → reabrir:** negociação que esfria (ex.: orçamento recusado) é cancelada e, **a partir do cancelamento**, abre-se uma nova negociação para a mesma pessoa — ex.: novo orçamento, ou orçamento reajustado após nova medição. O cancelamento oferece a opção "nova negociação" já vinculando a anterior (histórico na Aba3 do cliente); a nova nasce no estágio adequado (ex.: Orçamento ou Visita/Medição), nunca "retrocedendo" o card antigo
 - Cliente existente entrando em nova negociação aparece no board com badge "★ cliente" — mesmo funil, visual distinto
 - **Recorrência:** o funil acompanha também negociação de projetos, obras, reformas e serviços p/ **clientes** (não só conversão de lead) — visualização simples: badge ★ + `tipoServico` no card e **filtro por tipo** (projeto|obra|reforma|serviço) + toggle "só leads / só clientes / todos", sem colunas ou boards separados
 - Funil mede conversão em dois níveis: lead→cliente (1ª vez) e proposta→contrato (recorrente)
