@@ -223,3 +223,4 @@ Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociaç
 - Aba7 Financeiro: budget total (soma valorContrato das obras) + extrato de recebimentos/pagamentos ligados ao cliente (parcelas por obra, status pago|pendente|vencido, saldo)
 - Aba Portal do cliente: gerencia acesso /obra/{token} (link, regerar, expiração, chamados garantia) — refinar em dev
 - Aba8 Mensagens (CRM): histórico unificado de conversas com o cliente — envio/recebimento WhatsApp via Evolution API hoje, atrás de interface IMessagingProvider p/ migrar p/ Meta Business oficial sem trocar a UI; guardar também notas internas da equipe
+- Status SUSPENSO: aplica-se a Obra (motivo legal/ex.: embargada, inadimplência, pedido do cliente) — obra suspensa pausa etapas/kanban e prazos; cliente pode refletir badge derivado da obra suspensa, mas suspensão é da obra, não da pessoa; retomada exige motivo+data
