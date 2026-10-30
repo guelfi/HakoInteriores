@@ -2,6 +2,8 @@
 
 Spec consolidada do brainstorm (out/2026). Backend interno da Hako Interiores: clientes, obras (Kanban), financeiro, contratos, assinatura e **portal do cliente** (diferencial central).
 
+**Pipeline de documentos:** este SPEC (brainstorm consolidado) → **PRD** (Product Requirements Document) → **plano de desenvolvimento** → **roadmap geral do projeto**. O SPEC é a fonte de decisões; o PRD o formaliza em requisitos; plano e roadmap derivam do PRD.
+
 ## Stack
 
 - **.NET 10** + **Blazor Server** (UI + API no mesmo app, deploy único)
