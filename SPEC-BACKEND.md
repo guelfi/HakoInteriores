@@ -219,3 +219,5 @@ Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociaç
 - Aba5 Portal: link token, regenerar, expiração, chamados garantia
 - Status: select ativo|inativo|cancelado + motivo obrigatório (exceto ativo)
 - SEÇÃO CLIENTES NÃO FECHADA — aguarda revisão/abas adicionais; seções revisitáveis durante desenvolvimento
+- Aba6 Contratos: contratos emitidos p/ a pessoa + status + obra associada a cada contrato
+- Aba7 Financeiro: budget total (soma valorContrato das obras) + extrato de recebimentos/pagamentos ligados ao cliente (parcelas por obra, status pago|pendente|vencido, saldo)
