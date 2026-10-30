@@ -213,6 +213,7 @@ Propósito: funil **básico por design** — visualização fácil e rápida da 
 
 - **Sem edição pelo funil:** clicar no card não permite alterar nenhuma informação (nome do cliente, detalhes do serviço, valor etc.) — qualquer alteração de dados é feita na seção Clientes (ou Contratos); o funil serve só para ver/mover estágio
 - **Só avança:** card nunca "volta" de fase — Orçamento não retorna a Visita/Medição, Negociação não retorna a Orçamento; drag&drop permitido apenas para colunas à frente (únicas saídas: Ganho ou Perdido/cancelada)
+- **Affordance de destino (UI):** ao iniciar o arraste (ou clique-mover no mobile), as colunas **válidas** acendem em verde/destaque e as **inválidas** ficam esmaecidas/bloqueadas (sem aceitar drop) — o usuário vê de antemão para onde o card pode ir, sem ser induzido ao erro por coluna "disponível"; soltar fora de destino válido cancela o movimento
 
 Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociações **simultâneas** — um lead/cliente pode ter **vários cards ativos no funil ao mesmo tempo**, um por serviço em negociação.
 - **Separação por serviço é obrigatória:** serviços distintos negociam-se em cards separados mesmo quando se relacionam na prática — ex.: marcenaria (armários) e reforma da cozinha são duas negociações independentes, ainda que os armários sejam para a cozinha em reforma
