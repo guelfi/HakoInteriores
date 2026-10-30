@@ -247,6 +247,23 @@ Card = `Negociacao`, nunca a pessoa diretamente. Uma pessoa pode ter N negociaç
 - **Cancelar → reabrir (cadeia de versões):** a nova negociação referencia a anterior; o novo orçamento segue a `versao` da cadeia e o antigo fica `substituido` — histórico completo na Aba3
 - Funil segue **read-only sem exceções:** nenhuma ação de visita/orçamento acontece pelo board — tudo na Aba3 do cliente
 
+### Gatilhos de avanço (regra de negócio de cada transição — movimento manual, só p/ frente)
+
+| Transição | Gatilho (o que aconteceu no mundo real) |
+|---|---|
+| Novo → Contato | Primeiro contato realizado — ao arrastar, **modal de confirmação obrigatório**: "Confirma que o contato com este lead foi realizado?" |
+| Contato → Visita/Medição | Visita **agendada** (existe `Visita` status `agendada`) |
+| Visita/Medição → Orçamento | Orçamento **enviado** (`Orcamento.status = enviado`) |
+| Orçamento → Negociação | Cliente respondeu: pediu ajuste/negociou valor ou prazo |
+| Negociação → Ganho | Negociação `fechada` + **contrato assinado** |
+| Qualquer → Perdido | Cancelamento com `motivoPerda` |
+
+**Regras da coluna Novo e origem dos cards:**
+- Coluna **Novo** recebe **apenas** leads que enviaram mensagem pela **LP** (form do site) — é a única origem que inicia em Novo
+- **Novo → Contato é irreversível:** não se retrocede de Contato p/ Novo (coerente com "só avança")
+- **Cliente recorrente** (já é cliente, nova proposta) **inicia direto em Contato** — nunca passa por Novo
+- **Leads captados fora da LP** (email, WhatsApp, ligação, cartão de visita, contato pessoal): cadastro manual na tela **Clientes** (tipo=lead) e o card **já nasce em Contato** — afinal o contato já aconteceu na captação
+
 ### Clientes — card CRUD (UI)
 - tipo = badge readonly derivado (lead→cliente só via negociação fechada + contrato assinado; carga legada = fase posterior/Admin)
 - obrigatórios: nome*, celular* (máscara); opcionais: email, enderecoObra, origem, observações
