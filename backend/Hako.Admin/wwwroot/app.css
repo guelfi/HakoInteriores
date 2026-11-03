@@ -153,13 +153,13 @@ h1:focus {
 .modal h3{margin:0;font-family:Georgia,serif}
 .fld{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 .fld input{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:14px;color:var(--text);font-family:inherit}
-.login-shell{min-height:100vh;display:grid;place-items:center;background:var(--side,#1a1a1a);background:linear-gradient(160deg,#1a1a1a 55%,#232018);font-family:'Montserrat',system-ui,sans-serif}
-.login-card{background:#fff;border-radius:18px;padding:38px 34px;width:min(360px,92vw);display:flex;flex-direction:column;gap:14px;box-shadow:0 24px 60px rgba(0,0,0,.4);color:#333}
+.login-shell{min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:16px;box-sizing:border-box;background:var(--side,#1a1a1a);background:linear-gradient(160deg,#1a1a1a 55%,#232018);font-family:'Montserrat',system-ui,sans-serif}
+.login-card{background:#fff;border-radius:18px;padding:34px 28px;width:min(360px,100%);box-sizing:border-box;display:flex;flex-direction:column;gap:14px;box-shadow:0 24px 60px rgba(0,0,0,.4);color:#333}
 .login-brand{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:8px}
 .login-brand .logo-text{font-size:14px;color:#888}.login-brand .logo-text strong{color:#1a1a1a}
 .login-card .fld{color:#888}
 .login-card .fld input{background:#f5f3ef;border-color:#e8e2d8;color:#333}
-.login-btn{text-align:center;display:block;padding:11px}
+.login-btn.btn.primary{text-align:center;display:block;padding:12px;background:#c5a059;border:1px solid #c5a059;border-radius:8px;color:#1a1a1a;font-weight:700;font-size:14px;cursor:pointer}
 .login-forgot{text-align:center;font-size:12.5px;color:#c5a059;text-decoration:none}
 .login-card .muted{text-align:center;font-size:11.5px}
 
